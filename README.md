@@ -24,18 +24,13 @@ And MARL models to learn multiple interceptor evasion by a swarm of targets.
 ## Quick Start
 ### Requirements
 - **Hardware**: A good GPU.
-- **Software**: 
-  - Python 3.9 (see requirements.txt)
-  - 
+- **Software**: Python 3.9 (see environment.yaml)
 
 ### Install the env (Conda version)
-1. Install basic dependencies and PyTorch:
+1. Install basic in a new Conda env:
    ```bash
-    conda env create -f environment.yml
-2. Install RLlib and Gymnasium:
-   ```bash
-    pip install "ray[rllib]" gymnasium
-
+    conda env create -n ENV_NAME -f environment.yaml
+   
 ### Run the app
 1. **Run the main script**:
    ```bash
