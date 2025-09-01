@@ -20,12 +20,13 @@ dependencies:
   - brotli-python=1.1.0
   - bzip2=1.0.8
   - c-ares=1.34.5
-  - ca-certificates=2025.4.26
+  - ca-certificates=2025.7.15
   - cached-property=1.5.2
   - cached_property=1.5.2
-  - certifi=2025.4.26
+  - certifi=2025.8.3
   - cffi=1.17.1
   - charset-normalizer=3.4.2
+  - cloudpickle=3.1.1
   - contourpy=1.3.0
   - cryptography=45.0.2
   - cuda-cudart=11.8.89
@@ -39,7 +40,9 @@ dependencies:
   - cyrus-sasl=2.1.27
   - czml3=1.0.2
   - dbus=1.13.18
+  - exceptiongroup=1.2.0
   - expat=2.7.0
+  - farama-notifications=0.0.4
   - ffmpeg=4.3
   - fontconfig=2.14.1
   - fonttools=4.58.0
@@ -58,11 +61,14 @@ dependencies:
   - idna=3.10
   - importlib-metadata=8.6.1
   - importlib-resources=6.5.2
+  - importlib_metadata=8.6.1
   - importlib_resources=6.5.2
+  - iniconfig=2.1.0
   - intel-openmp=2022.1.0
   - jaraco.classes=3.4.0
   - jaraco.context=6.0.1
   - jaraco.functools=4.1.0
+  - jax-jumpy=1.0.0
   - jeepney=0.9.0
   - jinja2=3.1.6
   - jpeg=9e
@@ -155,16 +161,20 @@ dependencies:
   - openssl=3.5.0
   - packaging=25.0
   - pcre2=10.42
+  - pettingzoo=1.25.0
   - pillow=11.1.0
   - pip=25.1.1
   - plotly=5.24.1
+  - pluggy=1.5.0
   - poliastro=0.17.0
   - pthread-stubs=0.4
   - pycparser=2.22
   - pyerfa=2.0.1.5
+  - pygments=2.19.1
   - pyparsing=3.2.3
   - pyside6=6.7.2
   - pysocks=1.7.1
+  - pytest=8.4.1
   - python=3.9.21
   - python-dateutil=2.9.0.post0
   - python_abi=3.9
@@ -193,6 +203,7 @@ dependencies:
   - sympy=1.13.3
   - tenacity=9.1.2
   - tk=8.6.14
+  - tomli=2.2.1
   - torchaudio=2.5.1
   - torchtriton=3.1.0
   - torchvision=0.20.1
@@ -220,9 +231,7 @@ dependencies:
   - zstd=1.5.6
   - pip:
       - click==8.1.8
-      - cloudpickle==3.1.1
       - dm-tree==0.1.8
-      - farama-notifications==0.0.4
       - filelock==3.18.0
       - fsspec==2025.5.0
       - gymnasium==1.0.0
