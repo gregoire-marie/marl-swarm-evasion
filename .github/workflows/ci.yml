@@ -21,14 +21,17 @@ jobs:
         environment-file: environment.yml
         auto-activate-base: false
         python-version: 3.9
-        use-mamba: true  # faster env solving
+        use-mamba: true
 
-    - name: Verify Conda env (optional debug)
+    - name: Verify Conda env
       run: |
         conda info
         conda list
 
+    - name: Make 'src' importable (no new folders)
+      shell: bash -l {0}
+      run: echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
     - name: Run tests
       shell: bash -l {0}
-      run: |
-        pytest tests/ --maxfail=3 --disable-warnings --tb=short
+      run: pytest tests/ --maxfail=3 --disable-warnings --tb=short

@@ -26,26 +26,27 @@ Target satellites learn to evade a swarm of interceptor satellites dynamically l
 
 ## Learn to parametrize
 
+Multiple modes are available for the various features.
+
 ### Observation space
 
-1. **Parameters and distance**: Each satellite observes the keplerian parameters of all satellites (targets and interceptors), as well as their current distance, and its own remaining delta-V. Best for a prograde chases, specifically approach-and-maintain.
-2. **Parameters and close approaches**: Each satellite observes the keplerian parameters of all satellites (targets and interceptors), as well as information relative to the next closest approach to each other satellites (approach distance and velocity, and time remaining to the closest approach), and its own remaining delta-V. Best for retrograde seed-and-destroy.
+- [x] **Parameters and distance**: Each satellite observes the keplerian parameters of all satellites (targets and interceptors), as well as their current distance, and its own remaining delta-V. Best for a prograde chases, specifically approach-and-maintain.
+- [ ] **Parameters and close approaches**: Each satellite observes the keplerian parameters of all satellites (targets and interceptors), as well as information relative to the next closest approach to each other satellites (approach distance and velocity, and time remaining to the closest approach), and its own remaining delta-V. Best for retrograde seed-and-destroy.
 
 ### Action space
 
-Two modes are available.
-1. **Keplerian Target Orbit**: Agents learn to choose on which orbit they shall be next. The optimal maneuver delta-V is then determined and applied to the satellite.
-2. **TNW Maneuvers**: Agents learn to directly choose the maneuver parameters in the TNW local orbital frame.
+- [x] **TNW Maneuvers**: Agents learn to directly choose the maneuver parameters in the TNW local orbital frame.
+- [ ] **Keplerian Target Orbit**: Agents learn to choose on which orbit they shall be next. The optimal maneuver delta-V is then determined and applied to the satellite.
 
 ### Interceptors objective
 
-1. **Seek-and-destroy**: The distance to targets must be reduced to zero as fast as possible, regardless of relative speed.
-2. **Approach-and-maintain (coming)**: The distance to targets must be reduced in a cost-efficient manner, then a set distance must be kept.
+- [x] **Seek-and-destroy**: The distance to targets must be reduced to zero as fast as possible, regardless of relative speed.
+- [ ] **Approach-and-maintain (coming)**: The distance to targets must be reduced in a cost-efficient manner, then a set distance must be kept.
 
 ### Targets objective
 
-1. **Evade**: Kept a non-null distance with all interceptors at low fuel cost, without any bounds of movement.
-2. **Station keeping**: Stay inside a given orbit box, while evading interceptors.
+- [x] **Evade**: Kept a non-null distance with all interceptors at low fuel cost, without any bounds of movement.
+- [ ] **Station keeping**: Stay inside a given orbit box, while evading interceptors.
 
 ## Main features
 - **Orbital Environment Builder**: Creates an environment containing target and interceptor satellites. *Based on [`Poliastro`](https://docs.poliastro.space/en/stable/) and [`Astropy`](https://www.astropy.org/)*. Manages:
