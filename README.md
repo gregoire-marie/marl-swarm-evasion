@@ -1,5 +1,7 @@
 # MARL Swarm Interceptor Evasion
 
+![CI](https://github.com/gregoire-marie/marl-swarm-evasion/actions/workflows/ci.yml/badge.svg)
+
 This is a project about swarm interceptor satellites evasion using multi-agent reinforcement learning.
 
 ## Overview
