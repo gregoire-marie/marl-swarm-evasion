@@ -1,4 +1,4 @@
-name: marl-evasion
+name: marl-swarm-evasion
 channels:
   - pytorch
   - nvidia
@@ -249,4 +249,4 @@ dependencies:
       - rpds-py==0.25.0
       - tensorboardx==2.6.2.2
       - tzdata==2025.2
-prefix: /root/miniconda3/envs/marl-evasion
+prefix: /root/miniconda3/envs/marl-swarm-evasion

@@ -17,7 +17,7 @@ jobs:
     - name: Set up Conda environment
       uses: conda-incubator/setup-miniconda@v3
       with:
-        activate-environment: marl-evasion
+        activate-environment: marl-swarm-evasion
         environment-file: environment.yml
         auto-activate-base: false
         python-version: 3.9
