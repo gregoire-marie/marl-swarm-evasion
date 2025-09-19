@@ -21,7 +21,7 @@ class SatelliteAgent:
         initial_elements (tuple): Initial Keplerian elements (a, e, i, RAAN, argp, M).
         epoch (Time): Initial epoch of the simulation.
         orbit_state (OrbitState): Current orbital state.
-        delta_v_total (Quantity): Cumulative delta-v applied (km/s).
+        used_delta_v (Quantity): Cumulative delta-v applied (km/s).
     """
 
     def __init__(self, agent_id: str, config: dict, epoch: Time):
@@ -32,8 +32,8 @@ class SatelliteAgent:
             agent_id (str): Unique ID for the agent.
             config (dict): Configuration dictionary containing:
                 - "role": either "interceptor" or "target".
-                - "init_orbit": Tuple of 6 classical orbital elements as astropy Quantities.
-                - "init_delta_v": Float setting the initial orbital maneuver budget (in seconds).
+                - "init_orbit": Tuple of 6 Keplerian orbital elements as astropy Quantities.
+                - "init_delta_v": Float setting the initial orbital maneuver budget (in km/s).
             epoch (Time): Start time of the simulation.
         """
         self.id = agent_id
@@ -50,7 +50,7 @@ class SatelliteAgent:
         Applies an instantaneous delta-v maneuver at a given time.
 
         Args:
-            dv_vector (np.ndarray): Delta-v vector in ECI frame, shape (3,), units in km/s.
+            dv_vector (np.ndarray): Delta-v vector in ECI frame, shape (3,), units in m/s.
             time (Time): Time at which the maneuver is performed.
         """
         dv = dv_vector * u.km / u.s

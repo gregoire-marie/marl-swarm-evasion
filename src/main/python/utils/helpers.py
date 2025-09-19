@@ -88,7 +88,7 @@ def delta_v_norm(dv_vec):
 
     Returns
     -------
-    Quantity in km/s or m/s
+    Quantity in km/s
     """
     return np.linalg.norm(dv_vec.to_value(u.km / u.s)) * u.km / u.s
 
