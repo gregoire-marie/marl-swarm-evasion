@@ -103,7 +103,13 @@ marl_interceptor_evasion/
 ```
 
 ## License
-Released under the **MIT License**.
+All Rights Reserved
+
+Copyright © 2025 Your Name
+
+This source code and all associated files are the property of the author.
+Unauthorized copying, distribution, modification, or sale of this software,
+via any medium, is strictly prohibited without prior written permission.
 
 ## Keywords
 MARL, Multi-Agent Reinforcement Learning, MADDPG, ASAT, Anti-Satellite
