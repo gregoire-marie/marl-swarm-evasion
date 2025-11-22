@@ -31,9 +31,9 @@ class SatelliteAgent:
         Args:
             agent_id (str): Unique ID for the agent.
             config (dict): Configuration dictionary containing:
-                - "role": either "interceptor" or "target".
+                - "role": String either "interceptor" or "target".
                 - "init_orbit": Tuple of 6 Keplerian orbital elements as astropy Quantities.
-                - "init_delta_v": Float setting the initial orbital maneuver budget (in km/s).
+                - "init_delta_v": Astropy quantity (in km/s) setting the initial orbital maneuver budget.
             epoch (Time): Start time of the simulation.
         """
         self.id = agent_id
@@ -133,6 +133,15 @@ class SatelliteAgent:
             # TODO: Add closest approach data and covariance
 
         return np.concatenate(obs, dtype=np.float32)
+
+    def get_remaining_delta_v(self) -> u.Quantity:
+        """
+        Returns the amount of remaining delta-v in the agent.
+
+        Returns:
+            Quantity: Remaining delta-v (km/s).
+        """
+        return self.init_delta_v - self.get_used_delta_v()
 
     def get_used_delta_v(self) -> u.Quantity:
         """
