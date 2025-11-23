@@ -21,7 +21,7 @@ def make_dummy_config(n_agents=2):
                 0 * u.deg,
                 0 * u.deg
             ),
-            "delta_v": 10.0
+            "init_delta_v": 10.0
         }
         agent_configs[agent_id] = config
 
@@ -58,7 +58,7 @@ def test_orbital_env_reset_and_step():
         assert env.observation_space(agent_id).contains(ob), f"{agent_id} obs not in observation space"
 
     # Store pre-step state
-    pre_dvs = {aid: env._agent_states[aid].get_total_delta_v().to_value(u.km / u.s) for aid in env.agents}
+    pre_dvs = {aid: env._agent_states[aid].get_used_delta_v().to_value(u.km / u.s) for aid in env.agents}
     pre_obs = {aid: ob.copy() for aid, ob in obs_0.items()}
 
     # Build zero-action dictionary (no Δv)
@@ -88,7 +88,7 @@ def test_orbital_env_reset_and_step():
         assert delta_obs > 1e-3, f"Observation for {agent_id} did not change after propagation"
 
         # Δv should not have changed
-        post_dv = env._agent_states[agent_id].get_total_delta_v().to_value(u.km / u.s)
+        post_dv = env._agent_states[agent_id].get_used_delta_v().to_value(u.km / u.s)
         assert np.isclose(post_dv, pre_dvs[agent_id], atol=1e-6), f"Δv changed for {agent_id} without action"
 
         # Observation space compliance post-step

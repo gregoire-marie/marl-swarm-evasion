@@ -23,7 +23,7 @@ def test_initialization():
     config = {
         "role": "interceptor",
         "init_orbit": get_sample_elements(),
-        "delta_v": 10.0
+        "init_delta_v": 10.0
     }
 
     agent = SatelliteAgent("agent_0", config, epoch)
@@ -32,7 +32,7 @@ def test_initialization():
     assert agent.role == "interceptor"
     assert agent.orbit_state.epoch == epoch
 
-    dv_total = agent.get_total_delta_v()
+    dv_total = agent.get_used_delta_v()
     assert isinstance(dv_total, u.Quantity)
     assert dv_total.unit == u.km / u.s
     assert dv_total.to_value() == 0.0  # Should be 0 at init
@@ -44,7 +44,7 @@ def test_propagation_and_action():
     config = {
         "role": "interceptor",
         "init_orbit": get_sample_elements(),
-        "delta_v": 10.0
+        "init_delta_v": 10.0
     }
 
     agent = SatelliteAgent("agent_1", config, epoch)
@@ -76,7 +76,7 @@ def test_propagation_and_action():
     )
 
     # Check cumulative Δv updated
-    dv_total = agent.get_total_delta_v().to_value(u.km / u.s)
+    dv_total = agent.get_used_delta_v().to_value(u.km / u.s)
     assert np.isclose(dv_total, expected_dv, rtol=1e-6)
 
 
@@ -86,12 +86,12 @@ def test_observation_vector():
     config_0 = {
         "role": "target",
         "init_orbit": get_sample_elements(),
-        "delta_v": 10.0
+        "init_delta_v": 10.0
     }
     config_1 = {
         "role": "interceptor",
         "init_orbit": get_sample_elements(),
-        "delta_v": 10.0
+        "init_delta_v": 10.0
     }
 
     agent_0 = SatelliteAgent("agent_0", config_0, epoch)

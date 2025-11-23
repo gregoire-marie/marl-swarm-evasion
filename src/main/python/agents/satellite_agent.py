@@ -21,7 +21,7 @@ class SatelliteAgent:
         initial_elements (tuple): Initial Keplerian elements (a, e, i, RAAN, argp, M).
         epoch (Time): Initial epoch of the simulation.
         orbit_state (OrbitState): Current orbital state.
-        delta_v_total (Quantity): Cumulative delta-v applied (km/s).
+        used_delta_v (Quantity): Cumulative delta-v applied (km/s).
     """
 
     def __init__(self, agent_id: str, config: dict, epoch: Time):
@@ -31,26 +31,26 @@ class SatelliteAgent:
         Args:
             agent_id (str): Unique ID for the agent.
             config (dict): Configuration dictionary containing:
-                - "role": either "interceptor" or "target".
-                - "init_orbit": Tuple of 6 classical orbital elements as astropy Quantities.
-                - "delta_v": Float setting the initial orbital maneuver budget (in seconds).
+                - "role": String either "interceptor" or "target".
+                - "init_orbit": Tuple of 6 Keplerian orbital elements as astropy Quantities.
+                - "init_delta_v": Astropy quantity (in km/s) setting the initial orbital maneuver budget.
             epoch (Time): Start time of the simulation.
         """
         self.id = agent_id
         self.role = config["role"]
         self.initial_elements = config["init_orbit"]
-        self.max_delta_v_budget = config.get("delta_v", 10.0)  # km/s
+        self.init_delta_v = config["init_delta_v"]  # km/s
         self.epoch = epoch
 
         self.orbit_state = OrbitState(self.initial_elements, epoch)
-        self.delta_v_total = 0.0 * u.km / u.s
+        self.used_delta_v = 0.0 * u.km / u.s
 
     def apply_action(self, dv_vector: np.ndarray, time: Time):
         """
         Applies an instantaneous delta-v maneuver at a given time.
 
         Args:
-            dv_vector (np.ndarray): Delta-v vector in ECI frame, shape (3,), units in km/s.
+            dv_vector (np.ndarray): Delta-v vector in ECI frame, shape (3,), units in m/s.
             time (Time): Time at which the maneuver is performed.
         """
         dv = dv_vector * u.km / u.s
@@ -58,7 +58,7 @@ class SatelliteAgent:
             log.debug(f"[{self.id}] Applying Δv = {dv_vector} km/s at t={time.iso}")
 
         self.orbit_state.apply_delta_v(dv, time)
-        self.delta_v_total += np.linalg.norm(dv)
+        self.used_delta_v += np.linalg.norm(dv)
 
     def propagate_to(self, time: Time):
         """
@@ -94,7 +94,7 @@ class SatelliteAgent:
         # --- Own state ---
         own_kep = keplerian_to_array(self.orbit_state.orbit)  # (6,)
         obs.extend(own_kep)
-        remaining_dv = max(0.0, self.max_delta_v_budget - self.delta_v_total.to_value(u.km / u.s))
+        remaining_dv = max(0.0, self.init_delta_v - self.used_delta_v.to_value(u.km / u.s))
         obs.append(remaining_dv)
 
         # --- Other agents (all roles) ---
@@ -134,14 +134,23 @@ class SatelliteAgent:
 
         return np.concatenate(obs, dtype=np.float32)
 
-    def get_total_delta_v(self) -> u.Quantity:
+    def get_remaining_delta_v(self) -> u.Quantity:
+        """
+        Returns the amount of remaining delta-v in the agent.
+
+        Returns:
+            Quantity: Remaining delta-v (km/s).
+        """
+        return self.init_delta_v - self.get_used_delta_v()
+
+    def get_used_delta_v(self) -> u.Quantity:
         """
         Returns the total delta-v applied by the agent so far.
 
         Returns:
             Quantity: Total delta-v (km/s).
         """
-        return self.delta_v_total
+        return self.used_delta_v
 
     def summary(self):
         """
