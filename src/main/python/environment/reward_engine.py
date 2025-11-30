@@ -83,8 +83,12 @@ def compute_rewards(
     Args:
         agent_states (Dict[str, SatelliteAgent]): Map from agent_id to SatelliteAgent.
         current_time (Time): Current time of the simulation.
-        objectives (Optional[Dict[str, float]]): Thresholds for distances and delta-v.
-        weights (Optional[Dict[str, float]]): Weights for each reward component.
+        objectives (Optional[Dict[str, float]]): Thresholds expressed as plain floats with explicit units:
+            - collision_distance_km: kilometers
+            - avoid_distance_km: kilometers
+            - same_role_spacing_km: kilometers
+            - minimal_delta_v_kms: km/s
+        weights (Optional[Dict[str, float]]): Weights for each reward component (dimensionless floats).
 
     Returns:
         Tuple[Dict[str, float], Dict[str, bool]]:
@@ -95,6 +99,13 @@ def compute_rewards(
                 "targets_coll": bool,
                 "no_fuel": bool,
             }
+
+    Unit conventions
+    -----------------
+    - Distances are computed via compute_eci_distance(...) and are plain floats in kilometers.
+    - Delta-v usage is obtained from SatelliteAgent as an astropy Quantity and converted to floats in km/s
+      for shaping functions.
+    - Shaping functions accept and return plain floats; no astropy Quantities should be passed into them.
     """
     if objectives is None:
         objectives = DEFAULT_OBJECTIVES
