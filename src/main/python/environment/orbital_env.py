@@ -4,6 +4,7 @@ import numpy as np
 from astropy.time import Time, TimeDelta
 
 from src.main.python.agents.satellite_agent import SatelliteAgent
+from src.main.python.environment.reward_engine import compute_rewards
 
 
 class OrbitalEnv(ParallelEnv):
@@ -14,10 +15,19 @@ class OrbitalEnv(ParallelEnv):
     satellite agents using Keplerian dynamics. Each agent can act independently with a
     3D continuous delta-v vector in ECI frame. Designed for MARL training with RLlib.
 
+    Unit conventions
+    ----------------
+    - External RL interface (actions/observations): plain numpy float arrays
+      • Actions are delta-v components in km/s (floats)
+      • Observations are unitless float vectors built from Keplerian elements (converted to floats),
+        remaining Δv (km/s), and pairwise distances (km)
+    - Internals (physics): astropy.units.Quantity is used end-to-end for positions, velocities,
+      angles, time, and Δv. Conversions to floats happen only at the API edges for RL.
+
     Attributes:
         agents (List[str]): Active agent IDs in the environment.
         possible_agents (List[str]): All agent IDs (initially same as agents).
-        agent_configs (dict): Mapping of agent_id to config dict with orbit and type.
+        agent_configs (dict): Mapping of agent_id to config dict with orbit and role.
         env_config (dict): Configuration for timestep, episode duration, etc.
         timestep (TimeDelta): Time interval between simulation steps.
         episode_length (int): Number of steps per episode.
@@ -43,8 +53,10 @@ class OrbitalEnv(ParallelEnv):
 
         Args:
             agent_configs (dict): Per-agent configuration, where each entry contains:
-                - "type" (str): "interceptor" or "target".
-                - "elements" (tuple): Orbital elements (a, e, i, RAAN, argp, M) as astropy Quantities.
+                - "role" (str): "interceptor" or "target".
+                - "init_orbit" (tuple): Classical elements (a, e, i, RAAN, argp, M) as astropy Quantities
+                  with units [km, one, deg, deg, deg, deg].
+                - "init_delta_v" (float or Quantity): Initial Δv budget. If float, interpreted as km/s.
             env_config (dict): Environment parameters including:
                 - "timestep_sec" (float): Time step in seconds.
                 - "episode_length" (int): Maximum number of steps per episode.
@@ -96,46 +108,58 @@ class OrbitalEnv(ParallelEnv):
         Advance the simulation one timestep using agents' delta-v actions.
 
         Args:
-            actions (dict): Mapping from agent_id → 3D np.ndarray delta-v (in km/s).
+            actions (dict): Mapping from agent_id → 3D np.ndarray delta-v (in km/s, floats).
 
         Returns:
             Tuple:
                 - observations (dict): agent_id → observation (np.ndarray).
-                - rewards (dict): agent_id → float reward (currently zero).
+                - rewards (dict): agent_id → float reward.
                 - dones (dict): agent_id → bool indicating episode completion.
-                - infos (dict): agent_id → extra info dict (currently empty).
+                - infos (dict): agent_id → extra info dict (flags, time, step).
         """
         self._step_count += 1
         self._current_time += self.timestep
 
-        # Apply actions
-        for agent_id, dv_vector in actions.items():
-            agent = self._agent_states[agent_id]
-            agent.apply_action(dv_vector, self._current_time)
+        # Apply actions (clip to action space bounds; default to zero if missing)
+        for agent_id in self.agents:
+            dv_vector = actions.get(agent_id, None)
+            if dv_vector is None:
+                dv = np.zeros(3, dtype=np.float32)
+            else:
+                dv = np.asarray(dv_vector, dtype=np.float32)
+            # Clip per configured bounds
+            dv = np.clip(dv, -self.max_delta_v, self.max_delta_v)
 
-        # Propagate all agents
+            agent = self._agent_states[agent_id]
+            agent.apply_action(dv, self._current_time)
+
+        # Propagate all agents to the new current time
         for agent in self._agent_states.values():
             agent.propagate_to(self._current_time)
 
-        # Compute observations, rewards, dones, infos
+        # Compute rewards and global flags
+        rewards_raw, flags = compute_rewards(self._agent_states, self._current_time)
+        # Ensure plain Python floats in rewards dict
+        rewards = {aid: float(rewards_raw.get(aid, 0.0)) for aid in self.agents}
+
+        # Observations after state update
         observations = {
             agent_id: agent.get_observation(self._agent_states)
             for agent_id, agent in self._agent_states.items()
         }
 
-        rewards = {
-            agent_id: 0.0  # TODO: replace with reward engine call
-            for agent_id in self.agents
-        }
-
-        dones = {
-            agent_id: self._step_count >= self.episode_length
-            for agent_id in self.agents
-        }
+        # Episode termination: end on episode length or any critical flag
+        any_flag = any(flags.values())
+        dones = {agent_id: (self._step_count >= self.episode_length) or any_flag for agent_id in self.agents}
         dones["__all__"] = all(dones.values())
 
+        # Infos: expose flags and basic diagnostics per agent
         infos = {
-            agent_id: {}
+            agent_id: {
+                "flags": flags.copy(),
+                "time": self._current_time.isot,
+                "step": self._step_count,
+            }
             for agent_id in self.agents
         }
 
