@@ -24,6 +24,30 @@ Target satellites learn to evade a swarm of interceptor satellites dynamically l
    ```bash
    python app/main.py
 
+## Conventions
+
+This project standardizes physical units, angles, and time across the codebase for correctness and reproducibility:
+
+- Units and types
+  - Internals use astropy quantities (Quantity) end-to-end.
+  - Distances are in kilometers (km); velocities and Δv in kilometers per second (km/s).
+  - Angles use mean anomaly M in the public API; internally conversions may use true anomaly ν.
+  - Time is handled with astropy.time (Time, TimeDelta). Avoid naive datetime.
+  - At RL edges (actions/observations), values are plain numpy float arrays. Convert with .to_value(...) at boundaries.
+
+- Actions
+  - 3D delta-v vectors (ECI) in km/s. Magnitudes are clipped by env_config["max_delta_v_kms"].
+
+- Observations
+  - Flat float vectors containing Keplerian elements and derived scalars (e.g., remaining Δv, pairwise distances in km).
+
+- Distances
+  - Pairwise ECI distances and similar quantities are expressed in kilometers (km).
+
+- Seeding and determinism
+  - Use utils.random.set_global_seed(seed) or pass seed to env.reset(seed=...) to seed Python, NumPy, and PyTorch (if installed).
+  - Tests and examples use fixed epochs and deterministic elements for reproducibility.
+
 ## Learn to parametrize
 
 Multiple modes are available for the various features.
