@@ -12,12 +12,12 @@ Target satellites learn to evade a swarm of interceptor satellites dynamically l
 ## Quick Start
 ### Requirements
 - **Hardware**: A good GPU.
-- **Software**: Python 3.9 (see environment.yaml)
+- **Software**: Python 3.9 (see environment.yml)
 
 ### Install the env (Conda version)
 1. Install basic in a new Conda env:
    ```bash
-    conda env create -n ENV_NAME -f environment.yaml
+    conda env create -n ENV_NAME -f environment.yml
    
 ### Run the app
 1. **Run the main script**:
@@ -66,7 +66,7 @@ marl_interceptor_evasion/
 │
 ├── docs/                           # Documentation and diagrams
 │
-├── environment.yaml                # Conda env with Poliastro, RLlib, etc.
+├── environment.yml                 # Conda env with Poliastro, RLlib, etc.
 │
 ├── src/
 │   └── main/
