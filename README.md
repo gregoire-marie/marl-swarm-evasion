@@ -12,12 +12,12 @@ Target satellites learn to evade a swarm of interceptor satellites dynamically l
 ## Quick Start
 ### Requirements
 - **Hardware**: A good GPU.
-- **Software**: Python 3.9 (see environment.yml)
+- **Software**: Python 3.9 (see environment.yaml)
 
 ### Install the env (Conda version)
 1. Install basic in a new Conda env:
    ```bash
-    conda env create -n ENV_NAME -f environment.yml
+    conda env create -n ENV_NAME -f environment.yaml
    
 ### Run the app
 1. **Run the main script**:

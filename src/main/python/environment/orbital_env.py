@@ -5,6 +5,7 @@ from astropy.time import Time, TimeDelta
 
 from src.main.python.agents.satellite_agent import SatelliteAgent
 from src.main.python.environment.reward_engine import compute_rewards
+from src.main.python.utils.random import set_global_seed
 
 
 class OrbitalEnv(ParallelEnv):
@@ -75,18 +76,25 @@ class OrbitalEnv(ParallelEnv):
         self._current_time = None
         self._step_count = 0
         self._agent_states = {}  # agent_id -> SatelliteAgent
+        self._seed = None
 
     def reset(self, seed=None, options=None):
         """
         Reset the environment to its initial state and time.
 
         Args:
-            seed (int, optional): Random seed (unused for now).
+            seed (int, optional): Random seed. When provided, seeds Python, NumPy,
+                and Torch (if available) for deterministic behavior.
             options (dict, optional): Additional options for reset (unused).
 
         Returns:
             dict: Dictionary mapping agent_id → observation (np.ndarray).
         """
+        # Apply (optional) seeding for determinism
+        if seed is not None:
+            self._seed = int(seed)
+            set_global_seed(self._seed)
+
         self._step_count = 0
         self._current_time = Time(self.env_config.get("start_time", "2025-01-01 00:00:00"), scale="utc")
 
