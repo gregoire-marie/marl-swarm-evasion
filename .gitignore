@@ -107,6 +107,7 @@ cmake-build-*/
 
 # IntelliJ
 out/
+.junie
 
 # idea folder
 .idea
