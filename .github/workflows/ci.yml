@@ -34,4 +34,10 @@ jobs:
 
     - name: Run tests
       shell: bash -l {0}
-      run: pytest tests/ --maxfail=3 --disable-warnings --tb=short
+      run: pytest tests/ --maxfail=3 --disable-warnings --tb=short --cov=src/main/python --cov-report=term-missing --cov-report=xml
+
+    - name: Upload coverage report
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-xml
+        path: coverage.xml

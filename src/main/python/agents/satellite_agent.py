@@ -4,7 +4,7 @@ import numpy as np
 
 from src.main.python.agents.orbit_state import OrbitState
 from src.main.python.orbital_meca.orbits import compute_eci_distance
-from src.main.python.utils.helpers import keplerian_to_array, get_logger
+from src.main.python.utils.helpers import keplerian_to_array, get_logger, delta_v_norm
 
 log = get_logger("SatelliteAgent")
 
@@ -39,7 +39,12 @@ class SatelliteAgent:
         self.id = agent_id
         self.role = config["role"]
         self.initial_elements = config["init_orbit"]
-        self.init_delta_v = config["init_delta_v"]  # km/s
+        # Normalize init_delta_v to Quantity[km/s] even if provided as plain float
+        init_dv_val = config.get("init_delta_v", 0.0)
+        if hasattr(init_dv_val, "to"):
+            self.init_delta_v = init_dv_val.to(u.km / u.s)
+        else:
+            self.init_delta_v = float(init_dv_val) * u.km / u.s  # km/s
         self.epoch = epoch
 
         self.orbit_state = OrbitState(self.initial_elements, epoch)
@@ -50,15 +55,16 @@ class SatelliteAgent:
         Applies an instantaneous delta-v maneuver at a given time.
 
         Args:
-            dv_vector (np.ndarray): Delta-v vector in ECI frame, shape (3,), units in m/s.
+            dv_vector (np.ndarray): Delta-v vector in ECI frame, shape (3,), values in km/s (floats).
             time (Time): Time at which the maneuver is performed.
         """
-        dv = dv_vector * u.km / u.s
+        dv = dv_vector * u.km / u.s  # Quantity[km/s]
         if np.linalg.norm(dv_vector) > 0:
             log.debug(f"[{self.id}] Applying Δv = {dv_vector} km/s at t={time.iso}")
 
         self.orbit_state.apply_delta_v(dv, time)
-        self.used_delta_v += np.linalg.norm(dv)
+        # Accumulate used Δv as a Quantity[km/s] to preserve unit consistency
+        self.used_delta_v += delta_v_norm(dv)
 
     def propagate_to(self, time: Time):
         """
@@ -94,8 +100,10 @@ class SatelliteAgent:
         # --- Own state ---
         own_kep = keplerian_to_array(self.orbit_state.orbit)  # (6,)
         obs.extend(own_kep)
-        remaining_dv = max(0.0, self.init_delta_v - self.used_delta_v.to_value(u.km / u.s))
-        obs.append(remaining_dv)
+        # Remaining delta-v gauge as float (km/s)
+        remaining_dv_value = self.init_delta_v.to_value(u.km / u.s) - self.used_delta_v.to_value(u.km / u.s)
+        remaining_dv_value = max(0.0, float(remaining_dv_value))
+        obs.append(remaining_dv_value)
 
         # --- Other agents (all roles) ---
         for other_id, other in sorted(other_agents.items()):

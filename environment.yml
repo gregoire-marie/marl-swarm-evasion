@@ -175,6 +175,7 @@ dependencies:
   - pyside6=6.7.2
   - pysocks=1.7.1
   - pytest=8.4.1
+  - pytest-cov=4.1.0
   - python=3.9.21
   - python-dateutil=2.9.0.post0
   - python_abi=3.9

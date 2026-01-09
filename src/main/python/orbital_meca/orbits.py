@@ -36,9 +36,13 @@ def compute_instantaneous_delta_v(
     aA, eccA, incA, raanA, argpA = elements_a
     aB, eccB, incB, raanB, argpB = elements_b
 
-    # Convert M_burn to true anomaly using poliastro 0.17.0-compatible functions
-    E_burn = M_to_E(M_burn.to(u.rad).value, eccA.value)     # Scalar rad
-    nu_burn = E_to_nu(E_burn, eccA.value) * u.rad           # Quantity rad
+    # Ensure proper units for angles and eccentricity (Astropy Quantities)
+    e_q = eccA.to(u.one) if hasattr(eccA, "to") else eccA * u.one
+    M_q = M_burn.to(u.rad)  # Quantity[rad]
+
+    # Convert mean anomaly to eccentric anomaly, then to true anomaly (Quantities)
+    E_burn = M_to_E(M_q, e_q)            # Quantity[rad]
+    nu_burn = E_to_nu(E_burn, e_q)       # Quantity[rad]
 
     # Construct both orbits at the same true anomaly (same spatial point)
     orbA = Orbit.from_classical(Earth, aA, eccA, incA, raanA, argpA, nu_burn, epoch)
@@ -49,8 +53,10 @@ def compute_instantaneous_delta_v(
     _, vB = orbB.rv()
 
     # Compute delta-v vector and magnitude
-    delta_v_vector = vB - vA
-    delta_v_magnitude = delta_v_vector.norm().to(u.m / u.s)
+    delta_v_vector = vB - vA  # Quantity[km/s], shape (3,)
+    # Use numpy norm for robust behavior across astropy versions
+    dv_mag_kms = np.linalg.norm(delta_v_vector.to_value(u.km / u.s)) * u.km / u.s
+    delta_v_magnitude = dv_mag_kms.to(u.m / u.s)
 
     return delta_v_vector.to(u.km / u.s), delta_v_magnitude
 
