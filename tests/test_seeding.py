@@ -104,8 +104,9 @@ def test_orbital_env_reset_seeds_globals_and_is_reproducible():
     try:
         env = _make_dummy_env(n_agents=2)
         seed = 4242
-        obs0 = env.reset(seed=seed)
+        obs0, infos0 = env.reset(seed=seed)
         assert isinstance(obs0, dict)
+        assert isinstance(infos0, dict)
         # env stores the seed
         assert getattr(env, "_seed", None) == seed
         # PYTHONHASHSEED reflects the provided seed
@@ -126,3 +127,56 @@ def test_orbital_env_reset_seeds_globals_and_is_reproducible():
         assert not np.allclose(np_draw_1, np_draw_3), "NumPy draws unexpectedly equal after different seed"
     finally:
         _restore_rng_state(py_state, np_state, env_phs)
+
+
+def test_try_seed_torch_with_mocks(mocker):
+    # Mock torch module
+    mock_torch = mocker.Mock()
+    # Also mock backends.cudnn
+    mock_torch.backends.cudnn = mocker.Mock()
+    
+    mocker.patch.dict("sys.modules", {"torch": mock_torch})
+    
+    from src.main.python.utils.random import _try_seed_torch
+    
+    # Case 1: CUDA available
+    mock_torch.cuda.is_available.return_value = True
+    res = _try_seed_torch(42)
+    assert res is True
+    mock_torch.manual_seed.assert_called_with(42)
+    mock_torch.cuda.manual_seed_all.assert_called_with(42)
+    assert mock_torch.backends.cudnn.deterministic is True
+    
+    # Case 2: CUDA not available
+    mock_torch.cuda.is_available.return_value = False
+    _try_seed_torch(42)
+    
+    # Case 3: Exception during seeding
+    mock_torch.manual_seed.side_effect = Exception("Fail")
+    res = _try_seed_torch(42)
+    assert res is False
+
+def test_try_seed_torch_cudnn_fail(mocker):
+    # Mock torch module
+    mock_torch = mocker.Mock()
+    mocker.patch.dict("sys.modules", {"torch": mock_torch})
+    
+    # Mock backends.cudnn to raise exception when setting deterministic
+    mock_cudnn = mocker.Mock()
+    mock_torch.backends.cudnn = mock_cudnn
+    
+    # Use PropertyMock to raise exception on assignment
+    type(mock_cudnn).deterministic = mocker.PropertyMock(side_effect=Exception("Cudnn Fail"))
+    
+    from src.main.python.utils.random import _try_seed_torch
+    # Should still return True because of the try-except pass around cudnn setup
+    res = _try_seed_torch(42)
+    assert res is True
+
+def test_set_global_seed_numpy_fail(mocker):
+    # Mock numpy.random.seed to fail
+    mocker.patch("numpy.random.seed", side_effect=Exception("NP Fail"))
+    from src.main.python.utils.random import set_global_seed
+    
+    res = set_global_seed(42)
+    assert res["numpy"] is False
