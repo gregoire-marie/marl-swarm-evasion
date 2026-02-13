@@ -112,14 +112,33 @@ def test_observation_vector():
     # Verify that values aren't all zero
     assert not np.all(obs == 0.0), "Observation vector should not be all zeros"
 
-    # Check that agent_0’s own elements match first 6 values
+    # Check that agent_0’s own elements match first 6 values (normalized)
     own_elements = get_sample_elements()
     a, e, i, raan, argp, M = own_elements
-    expected_first_elem = a.to_value(u.km)
+    from src.main.python.utils.normalization import A_REF, A_SCALE
+    expected_first_elem = (a.to_value(u.km) - A_REF) / A_SCALE
     actual_first_elem = obs[0]
 
     assert np.isclose(actual_first_elem, expected_first_elem, rtol=1e-3), (
-        f"First Keplerian element mismatch: {actual_first_elem} vs {expected_first_elem}"
+        f"First Keplerian element mismatch (normalized): {actual_first_elem} vs {expected_first_elem}"
     )
+
+def test_observation_v1_and_summary():
+    epoch = Time("2025-01-01 00:00:00", scale="utc")
+    config = {
+        "role": "target",
+        "init_orbit": get_sample_elements(),
+        "init_delta_v": 10.0
+    }
+    agent = SatelliteAgent("agent_0", config, epoch)
+    other_agent = SatelliteAgent("agent_1", config, epoch)
+    
+    # Test summary (mainly for coverage, checks if it doesn't crash)
+    agent.summary()
+    
+    # Test get_observation_v1
+    obs_v1 = agent.get_observation_v1({"agent_0": agent, "agent_1": other_agent})
+    assert isinstance(obs_v1, np.ndarray)
+    assert obs_v1.shape == (12,)  # 6 elements per agent * 2 agents
 
     # TODO: Add closest approaches and covariance
