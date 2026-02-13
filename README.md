@@ -5,24 +5,36 @@
 This is a project about swarm interceptor satellites evasion using multi-agent reinforcement learning.
 
 ## Overview
-A mixed target and interceptor satellite swarms cooperative-competitive environment, enabling multi-agent policy optimization with deep reinforcement learning using the [MADDPG algorithm](https://arxiv.org/pdf/1706.02275). 
+A mixed target and interceptor satellite swarms cooperative-competitive environment, enabling multi-agent policy optimization with deep reinforcement learning using algorithms such as [MADDPG](https://arxiv.org/pdf/1706.02275) or [PPO](https://arxiv.org/abs/1707.06347). 
 
 Target satellites learn to evade a swarm of interceptor satellites dynamically learning seek-and-destroy strategies.
 
 ## Quick Start
 ### Requirements
 - **Hardware**: A good GPU.
-- **Software**: Python 3.9 (see environment.yaml)
+- **Software**: Python 3.9 (see pyproject.toml)
 
-### Install the env (Conda version)
-1. Install basic in a new Conda env:
+### Install the env (uv version)
+1. Install dependencies using `uv`:
    ```bash
-    conda env create -n ENV_NAME -f environment.yaml
-   
+   uv sync
+   ```
+
 ### Run the app
-1. **Run the main script**:
+1. **Visualize rewards**:
    ```bash
-   python app/main.py
+   python app/visualize_rewards.py
+   ```
+2. **Run training (PPO)**:
+   ```bash
+   python app/train.py
+   ```
+
+## Testing
+Run tests using:
+```bash
+uv run pytest tests/ --cov=src/main/python --cov-report=term-missing
+```
 
 ## Conventions
 
@@ -40,6 +52,7 @@ This project standardizes physical units, angles, and time across the codebase f
 
 - Observations
   - Flat float vectors containing Keplerian elements and derived scalars (e.g., remaining Δv, pairwise distances in km).
+  - Values are normalized to [-1, 1] or [0, 1] for training stability (e.g., semi-major axis is centered around 7000km, angles are scaled by $\pi$).
 
 - Distances
   - Pairwise ECI distances and similar quantities are expressed in kilometers (km).
@@ -78,7 +91,7 @@ Multiple modes are available for the various features.
   - Orbital maneuvers,
   - Proximity approach computation,
   - Collision probability estimation.
-- **MADDPG Policy Learning**: Teach the interceptors to reduce the distance with targets and the targets to evade collisions using a fuel efficient maneuvers. *Based on [`RLlib`](https://docs.ray.io/en/latest/rllib/index.html), with a [`PyTorch`](https://pytorch.org/) backend*.
+- **Policy Learning**: Teach the interceptors to reduce the distance with targets and the targets to evade collisions using fuel efficient maneuvers. Supports algorithms such as **MADDPG** and **PPO** via RLlib.
 - **Multiple Chase Scenarios**: Aggressor and targets orbits, swarm size, maneuvering capacity, mission objective are all parameterizable.
 
 ## Repository Structure
@@ -86,50 +99,45 @@ Multiple modes are available for the various features.
 marl_interceptor_evasion/
 │
 ├── app/                            # Top-level scripts
-│   └── main.py                     # Entry point for running simulations
+│   ├── train.py                    # RLlib training script (PPO)
+│   └── visualize_rewards.py        # Reward shaping visualization tool
 │
 ├── docs/                           # Documentation and diagrams
 │
-├── environment.yml                 # Conda env with Poliastro, RLlib, etc.
+├── pyproject.toml              # Project configuration and dependencies
+├── uv.lock                     # Locked dependencies
 │
 ├── src/
 │   └── main/
 │       └── python/
-│           ├── environment/        # PettingZoo-compatible orbital env
-│           │   ├── orbital_env.py        # PettingZoo.parallel_env
-│           │   ├── reward_engine.py      # Modular reward computation
-│           │   └── wrappers.py           # Optional preprocessing (SuperSuit)
-│           │
 │           ├── agents/             # Agent abstractions
-│           │   ├── satellite_agent.py    # Satellite-level logic
-│           │   ├── orbit_state.py        # Poliastro wrapper with propagation + Δv
-│           │   └── maneuver.py           # Maneuver object and tracking
+│           │   ├── orbit_state.py     # Poliastro wrapper for propagation & Δv
+│           │   └── satellite_agent.py # Satellite-level logic & observations
 │           │
-│           ├── orbital_meca/       # Low-level orbital tools
-│           │   ├── orbits.py             # delta-v computation
-│           │   └── approaches.py         # closest approach
+│           ├── environment/        # PettingZoo-compatible orbital env
+│           │   ├── orbital_env.py     # PettingZoo ParallelEnv implementation
+│           │   ├── reward_engine.py   # Modular reward computation
+│           │   └── scenarios.py       # Scenario generation templates
 │           │
-│           ├── scenarios/          # Scenario generator & config
-│           │   ├── scenario_loader.py    # Load/save scenario configs
-│           │   └── initial_conditions.py # Orbital element sampling
+│           ├── orbital_meca/       # Low-level orbital mechanics tools
+│           │   ├── approaches.py      # Closest approach calculations
+│           │   └── orbits.py          # ECI distance & orbital utilities
 │           │
-│           ├── models/             # RLlib-compatible models
-│           │
-│           ├── train/              # Training scripts/configs
-│           │   ├── train_rllib.py        # RLlib trainer launcher
-│           │   └── config.yaml           # RLlib training configuration
-│           │
-│           └── utils/
-│               ├── constants.py         # Global μ, Earth radius, etc.
-│               └── helpers.py           # Unit conversion, logs, etc.
+│           └── utils/              # Shared utilities
+│               ├── constants.py       # Physical & environment constants
+│               ├── helpers.py         # Logging & unit conversions
+│               ├── normalization.py   # Observation scaling
+│               ├── random.py          # Seeding & reproducibility
+│               └── units.py           # Unit guardrails
 │
+├── tests/                          # 100% coverage test suite
 └── README.md
 ```
 
 ## License
 All Rights Reserved
 
-Copyright © 2025 Your Name
+Copyright © 2025 Grégoire MARIE
 
 This source code and all associated files are the property of the author.
 Unauthorized copying, distribution, modification, or sale of this software,

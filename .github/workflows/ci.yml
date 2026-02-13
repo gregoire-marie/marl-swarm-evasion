@@ -14,27 +14,20 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Set up Conda environment
-      uses: conda-incubator/setup-miniconda@v3
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v5
       with:
-        activate-environment: marl-swarm-evasion
-        environment-file: environment.yml
-        auto-activate-base: false
-        python-version: 3.9
-        use-mamba: true
+        enable-cache: true
+        python-version: "3.9.21"
 
-    - name: Verify Conda env
-      run: |
-        conda info
-        conda list
+    - name: Install dependencies
+      run: uv sync --all-extras --dev
 
     - name: Make 'src' importable (no new folders)
-      shell: bash -l {0}
       run: echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
     - name: Run tests
-      shell: bash -l {0}
-      run: pytest tests/ --maxfail=3 --disable-warnings --tb=short --cov=src/main/python --cov-report=term-missing --cov-report=xml
+      run: uv run pytest tests/ --maxfail=3 --disable-warnings --tb=short --cov=src/main/python --cov-report=term-missing --cov-report=xml
 
     - name: Upload coverage report
       uses: actions/upload-artifact@v4
