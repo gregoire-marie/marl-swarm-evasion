@@ -39,11 +39,13 @@ def test_orbital_env_reset_and_step():
     agent_configs, env_config = make_dummy_config(n_agents=3)
     env = OrbitalEnv(agent_configs, env_config)
 
-    obs_0 = env.reset()
+    obs_0, infos_0 = env.reset()
 
     # --- Type and structure checks ---
     assert isinstance(obs_0, dict)
     assert set(obs_0.keys()) == set(env.agents)
+    assert isinstance(infos_0, dict)
+    assert set(infos_0.keys()) == set(env.agents)
 
     for agent_id, ob in obs_0.items():
         # Type
@@ -67,12 +69,13 @@ def test_orbital_env_reset_and_step():
         for agent_id in env.agents
     }
 
-    obs_1, rewards, dones, infos = env.step(actions)
+    obs_1, rewards, terms, truncs, infos = env.step(actions)
 
     # --- Output structure ---
     assert set(obs_1.keys()) == set(env.agents)
     assert set(rewards.keys()) == set(env.agents)
-    assert set(dones.keys()) == set(env.agents).union({"__all__"})
+    assert set(terms.keys()) == set(env.agents)
+    assert set(truncs.keys()) == set(env.agents)
     assert set(infos.keys()) == set(env.agents)
 
     # --- Post-step checks ---
@@ -80,7 +83,8 @@ def test_orbital_env_reset_and_step():
         # Types
         assert isinstance(obs_1[agent_id], np.ndarray)
         assert isinstance(rewards[agent_id], float)
-        assert isinstance(dones[agent_id], bool)
+        assert isinstance(terms[agent_id], bool)
+        assert isinstance(truncs[agent_id], bool)
         assert isinstance(infos[agent_id], dict)
 
         # Observation should have changed due to propagation
@@ -95,7 +99,8 @@ def test_orbital_env_reset_and_step():
         assert env.observation_space(agent_id).contains(obs_1[agent_id]), f"{agent_id} post-step obs out of bounds"
 
     # Episode should not be done after 1 step
-    assert not dones["__all__"], "Episode ended too early"
+    assert not any(terms.values()), "Episode ended too early (termination)"
+    assert not any(truncs.values()), "Episode ended too early (truncation)"
 
 
 def test_single_agent_behavior():
@@ -103,7 +108,7 @@ def test_single_agent_behavior():
     agent_configs, env_config = make_dummy_config(n_agents=1)
     env = OrbitalEnv(agent_configs, env_config)
 
-    obs = env.reset()
+    obs, infos = env.reset()
     assert len(obs) == 1
 
     aid = next(iter(obs))
@@ -112,10 +117,10 @@ def test_single_agent_behavior():
 
     # One step
     actions = {aid: np.zeros(3, dtype=np.float32)}
-    obs_1, rewards, dones, infos = env.step(actions)
+    obs_1, rewards, terms, truncs, infos = env.step(actions)
 
-    assert not dones["__all__"]
-    assert aid in obs_1 and aid in rewards and aid in dones
+    assert not terms[aid]
+    assert aid in obs_1 and aid in rewards and aid in terms
 
 
 def test_observation_values_are_finite():
@@ -123,13 +128,53 @@ def test_observation_values_are_finite():
     agent_configs, env_config = make_dummy_config(n_agents=4)
     env = OrbitalEnv(agent_configs, env_config)
 
-    obs = env.reset()
+    obs, infos = env.reset()
 
     for ob in obs.values():
         assert np.all(np.isfinite(ob)), "NaN or Inf in initial observation"
 
     actions = {aid: np.zeros(3, dtype=np.float32) for aid in env.agents}
-    obs, _, _, _ = env.step(actions)
+    obs, _, _, _, _ = env.step(actions)
 
     for ob in obs.values():
         assert np.all(np.isfinite(ob)), "NaN or Inf in step observation"
+
+
+def test_action_clipping_and_render():
+    agent_configs, env_config = make_dummy_config(n_agents=2)
+    env = OrbitalEnv(agent_configs, env_config)
+    env.reset()
+
+    # Action exceeds max_delta_v (0.1 km/s)
+    large_action = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+    actions = {"agent_0": large_action}
+
+    obs, rewards, terms, truncs, infos = env.step(actions)
+
+    # Check used delta-v is clipped to max_delta_v (0.1)
+    used_dv = env._agent_states["agent_0"].get_used_delta_v().to_value(u.km / u.s)
+    assert np.isclose(used_dv, 0.1, atol=1e-6)
+
+    # Test render (smoke test)
+    env.render()
+
+
+def test_empty_actions():
+    agent_configs, env_config = make_dummy_config(n_agents=2)
+    env = OrbitalEnv(agent_configs, env_config)
+    env.reset()
+
+    # Passing empty dict for actions
+    obs, rewards, terms, truncs, infos = env.step({})
+    assert len(rewards) == 2
+    # Rewards could be positive due to shaping (proximity), but types should be float
+    assert all(isinstance(r, float) for r in rewards.values())
+
+
+def test_action_space_contains():
+    agent_configs, env_config = make_dummy_config(n_agents=1)
+    env = OrbitalEnv(agent_configs, env_config)
+    space = env.action_space("agent_0")
+    assert space.shape == (3,)
+    assert space.contains(np.array([0.05, 0.05, 0.05], dtype=np.float32))
+    assert not space.contains(np.array([0.2, 0.0, 0.0], dtype=np.float32))
