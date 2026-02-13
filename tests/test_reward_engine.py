@@ -96,6 +96,18 @@ def test_same_role_dispersion_and_collision(default_epoch, default_orbit_near, d
     assert not flags["interceptors_coll"]
     assert flags["targets_coll"]
 
+def test_interceptor_collision(default_epoch, default_orbit_near):
+    i1_orbit = default_orbit_near
+    i2_orbit = default_orbit_near  # Same orbit to provoke collision
+
+    i1 = default_agent("i1", "interceptor", i1_orbit, default_epoch)
+    i2 = default_agent("i2", "interceptor", i2_orbit, default_epoch)
+
+    agents = {"i1": i1, "i2": i2}
+    rewards, flags = compute_rewards(agents, default_epoch)
+
+    assert flags["interceptors_coll"]
+
 
 def test_fuel_penalty_and_no_fuel(default_epoch, default_orbit_near):
     agent = default_agent("s1", "target", default_orbit_near, default_epoch)
