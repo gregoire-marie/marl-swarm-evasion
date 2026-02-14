@@ -5,6 +5,7 @@ import numpy as np
 from src.main.python.agents.orbit_state import OrbitState
 from src.main.python.orbital_meca.orbits import compute_eci_distance
 from src.main.python.utils.helpers import keplerian_to_array, get_logger, delta_v_norm
+from src.main.python.utils.normalization import A_REF, A_SCALE, DIST_SCALE, FUEL_SCALE, normalize_angle
 
 log = get_logger("SatelliteAgent")
 
@@ -77,14 +78,14 @@ class SatelliteAgent:
 
     def get_observation(self, other_agents: dict) -> np.ndarray:
         """
-        Constructs the observation vector for the agent.
+        Constructs the observation vector for the agent with normalization.
 
         The observation includes:
-        - Own Keplerian elements (6D)
-        - Own fuel remaining (1D)
+        - Own Keplerian elements (6D, normalized)
+        - Own fuel remaining (1D, normalized)
         - For each other agent (regardless of role):
-            - Their Keplerian elements (6D)
-            - Their relative distance (1D)
+            - Their Keplerian elements (6D, normalized)
+            - Their relative distance (1D, normalized)
 
         Total observation size: 7 + (N-1) × 7 = 7N
 
@@ -98,21 +99,44 @@ class SatelliteAgent:
         obs = []
 
         # --- Own state ---
-        own_kep = keplerian_to_array(self.orbit_state.orbit)  # (6,)
-        obs.extend(own_kep)
-        # Remaining delta-v gauge as float (km/s)
+        own_kep_raw = keplerian_to_array(self.orbit_state.orbit)  # [a, e, i, raan, argp, M]
+        
+        # Normalize Keplerian elements
+        a_norm = (own_kep_raw[0] - A_REF) / A_SCALE
+        e_norm = own_kep_raw[1]  # Eccentricity is already 0-1
+        i_norm = normalize_angle(own_kep_raw[2])
+        raan_norm = normalize_angle(own_kep_raw[3])
+        argp_norm = normalize_angle(own_kep_raw[4])
+        m_norm = normalize_angle(own_kep_raw[5])
+        
+        obs.extend([a_norm, e_norm, i_norm, raan_norm, argp_norm, m_norm])
+        
+        # Remaining delta-v gauge
         remaining_dv_value = self.init_delta_v.to_value(u.km / u.s) - self.used_delta_v.to_value(u.km / u.s)
         remaining_dv_value = max(0.0, float(remaining_dv_value))
-        obs.append(remaining_dv_value)
+        # Normalize fuel (using its own init_delta_v if possible, else FUEL_SCALE)
+        fuel_norm_scale = self.init_delta_v.to_value(u.km / u.s) if self.init_delta_v.to_value(u.km / u.s) > 0 else FUEL_SCALE
+        obs.append(remaining_dv_value / fuel_norm_scale)
 
         # --- Other agents (all roles) ---
         for other_id, other in sorted(other_agents.items()):
             if other_id == self.id:
                 continue
-            other_kep = keplerian_to_array(other.orbit_state.orbit)
+            
+            other_kep_raw = keplerian_to_array(other.orbit_state.orbit)
+            
+            # Normalize other's Keplerian elements
+            oa_norm = (other_kep_raw[0] - A_REF) / A_SCALE
+            oe_norm = other_kep_raw[1]
+            oi_norm = normalize_angle(other_kep_raw[2])
+            oraan_norm = normalize_angle(other_kep_raw[3])
+            oargp_norm = normalize_angle(other_kep_raw[4])
+            om_norm = normalize_angle(other_kep_raw[5])
+            
+            obs.extend([oa_norm, oe_norm, oi_norm, oraan_norm, oargp_norm, om_norm])
+            
             distance = compute_eci_distance(self.orbit_state, other.orbit_state)  # km
-            obs.extend(other_kep)
-            obs.append(distance)
+            obs.append(distance / DIST_SCALE)
 
         return np.array(obs, dtype=np.float32)
 
@@ -164,7 +188,7 @@ class SatelliteAgent:
         """
         Logs a summary of the current orbit in Keplerian form.
         """
-        o = self.orbit_state.orbit
+        a, e, i, raan, argp, M = self.orbit_state.get_keplerian()
         log.info(
-            f"[{self.id}] a={o.a:.1f}, e={o.ecc:.4f}, i={o.inc.to(u.deg):.2f}, M={o.M.to(u.deg):.1f}"
+            f"[{self.id}] a={a.to(u.km):.1f}, e={e:.4f}, i={i.to(u.deg):.2f}, M={M.to(u.deg):.1f}"
         )

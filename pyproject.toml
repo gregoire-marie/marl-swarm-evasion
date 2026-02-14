@@ -1,0 +1,19 @@
+[project]
+name = "marl-swarm-evasion"
+version = "0.1.0"
+description = "Teaching satellites to evade interceptor swarms, which dynamically adapt their seek-and-destroy strategies using reinforcement learning (MADDPG)."
+requires-python = ">=3.9.21"
+dependencies = [
+    "numpy==1.26.4",
+    "astropy==5.3.4",
+    "pettingzoo==1.25.0",
+    "poliastro==0.17.0",
+    "torch==2.5.1",
+    "pytest==8.4.1",
+    "pytest-mock==3.15.1",
+    "pytest-cov==4.1.0",
+    "ray[tune]==2.46.0",
+    "dm-tree==0.1.8",
+    "lz4==4.4.4",
+    "gputil==1.4.0",
+]

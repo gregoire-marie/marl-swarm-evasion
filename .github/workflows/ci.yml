@@ -14,30 +14,52 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Set up Conda environment
-      uses: conda-incubator/setup-miniconda@v3
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v5
       with:
-        activate-environment: marl-swarm-evasion
-        environment-file: environment.yml
-        auto-activate-base: false
-        python-version: 3.9
-        use-mamba: true
+        enable-cache: true
+        python-version: "3.9.21"
 
-    - name: Verify Conda env
-      run: |
-        conda info
-        conda list
+    - name: Install dependencies
+      run: uv sync --all-extras --dev
 
     - name: Make 'src' importable (no new folders)
-      shell: bash -l {0}
       run: echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
     - name: Run tests
-      shell: bash -l {0}
-      run: pytest tests/ --maxfail=3 --disable-warnings --tb=short --cov=src/main/python --cov-report=term-missing --cov-report=xml
+      run: make ci
 
-    - name: Upload coverage report
-      uses: actions/upload-artifact@v4
+    - name: Get Coverage
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      id: coverage
+      shell: bash
+      run: |
+        set -euo pipefail
+        test -f coverage.xml
+    
+        TOTAL="$(python - <<'PY'
+        import xml.etree.ElementTree as ET
+        root = ET.parse("coverage.xml").getroot()
+        print(round(float(root.attrib["line-rate"]) * 100))
+        PY
+        )"
+    
+        COLOR="$(python - <<PY
+        t = int($TOTAL)
+        print("red" if t < 50 else "orange" if t < 70 else "yellow" if t < 85 else "green" if t < 95 else "brightgreen")
+        PY
+        )"
+    
+        echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+        echo "color=$COLOR" >> "$GITHUB_OUTPUT"
+
+    - name: Create Badge
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: schneegans/dynamic-badges-action@v1.7.0
       with:
-        name: coverage-xml
-        path: coverage.xml
+        auth: ${{ secrets.GIST_SECRET }}
+        gistID: PLACEHOLDER_GIST_ID
+        filename: coverage.json
+        label: Coverage
+        message: ${{ steps.coverage.outputs.total }}%
+        color: ${{ steps.coverage.outputs.color }}

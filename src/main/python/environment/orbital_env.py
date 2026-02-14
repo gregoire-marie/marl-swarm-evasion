@@ -88,7 +88,9 @@ class OrbitalEnv(ParallelEnv):
             options (dict, optional): Additional options for reset (unused).
 
         Returns:
-            dict: Dictionary mapping agent_id → observation (np.ndarray).
+            Tuple[dict, dict]: 
+                - observations (dict): Mapping agent_id → observation (np.ndarray).
+                - infos (dict): Empty or containing initial diagnostic info.
         """
         # Apply (optional) seeding for determinism
         if seed is not None:
@@ -109,7 +111,9 @@ class OrbitalEnv(ParallelEnv):
             for agent_id, agent in self._agent_states.items()
         }
 
-        return observations
+        infos = {agent_id: {} for agent_id in self.agents}
+
+        return observations, infos
 
     def step(self, actions):
         """
@@ -122,21 +126,25 @@ class OrbitalEnv(ParallelEnv):
             Tuple:
                 - observations (dict): agent_id → observation (np.ndarray).
                 - rewards (dict): agent_id → float reward.
-                - dones (dict): agent_id → bool indicating episode completion.
+                - terminations (dict): agent_id → bool indicating episode completion (failure/success).
+                - truncations (dict): agent_id → bool indicating episode length limit.
                 - infos (dict): agent_id → extra info dict (flags, time, step).
         """
         self._step_count += 1
         self._current_time += self.timestep
 
-        # Apply actions (clip to action space bounds; default to zero if missing)
+        # Apply actions
         for agent_id in self.agents:
             dv_vector = actions.get(agent_id, None)
             if dv_vector is None:
                 dv = np.zeros(3, dtype=np.float32)
             else:
                 dv = np.asarray(dv_vector, dtype=np.float32)
-            # Clip per configured bounds
-            dv = np.clip(dv, -self.max_delta_v, self.max_delta_v)
+            
+            # Action clipping: enforce L2-norm constraint if it exceeds max_delta_v
+            norm = np.linalg.norm(dv)
+            if norm > self.max_delta_v:
+                dv = (dv / norm) * self.max_delta_v
 
             agent = self._agent_states[agent_id]
             agent.apply_action(dv, self._current_time)
@@ -156,10 +164,14 @@ class OrbitalEnv(ParallelEnv):
             for agent_id, agent in self._agent_states.items()
         }
 
-        # Episode termination: end on episode length or any critical flag
+        # Episode termination and truncation
+        # Terminate on any critical flag (collision, intercept, no fuel)
         any_flag = any(flags.values())
-        dones = {agent_id: (self._step_count >= self.episode_length) or any_flag for agent_id in self.agents}
-        dones["__all__"] = all(dones.values())
+        terminations = {agent_id: any_flag for agent_id in self.agents}
+        
+        # Truncate on episode length
+        truncated = self._step_count >= self.episode_length
+        truncations = {agent_id: truncated for agent_id in self.agents}
 
         # Infos: expose flags and basic diagnostics per agent
         infos = {
@@ -171,7 +183,7 @@ class OrbitalEnv(ParallelEnv):
             for agent_id in self.agents
         }
 
-        return observations, rewards, dones, infos
+        return observations, rewards, terminations, truncations, infos
 
     def observation_space(self, agent_id):
         """
@@ -190,8 +202,8 @@ class OrbitalEnv(ParallelEnv):
         obs_dim = 7 * num_agents
 
         return Box(
-            low=-1e5,
-            high=1e5,
+            low=-10.0,
+            high=10.0,
             shape=(obs_dim,),
             dtype=np.float32
         )
@@ -222,4 +234,4 @@ class OrbitalEnv(ParallelEnv):
         """
         print(f"Time: {self._current_time.iso}, Step: {self._step_count}")
         for agent_id, agent in self._agent_states.items():
-            print(f"{agent_id}: {agent.orbit_state.summary()}")
+            agent.summary()

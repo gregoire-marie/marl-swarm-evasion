@@ -1,28 +1,43 @@
 # MARL Swarm Interceptor Evasion
 
 ![CI](https://github.com/gregoire-marie/marl-swarm-evasion/actions/workflows/ci.yml/badge.svg)
+![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/gregoire-marie/08984c6d4e53525aafa600104ee7070d/raw/marl-swarm-evasion-coverage.json)
+![Python Version](https://img.shields.io/badge/python-3.9.21-blue.svg)
+![License](https://img.shields.io/badge/license-All%20rights%20reserved-red)
 
 This is a project about swarm interceptor satellites evasion using multi-agent reinforcement learning.
 
 ## Overview
-A mixed target and interceptor satellite swarms cooperative-competitive environment, enabling multi-agent policy optimization with deep reinforcement learning using the [MADDPG algorithm](https://arxiv.org/pdf/1706.02275). 
+A mixed target and interceptor satellite swarms cooperative-competitive environment, enabling multi-agent policy optimization with deep reinforcement learning using algorithms such as [MADDPG](https://arxiv.org/pdf/1706.02275) or [PPO](https://arxiv.org/abs/1707.06347). 
 
 Target satellites learn to evade a swarm of interceptor satellites dynamically learning seek-and-destroy strategies.
 
 ## Quick Start
 ### Requirements
 - **Hardware**: A good GPU.
-- **Software**: Python 3.9 (see environment.yaml)
+- **Software**: Python 3.9.21 (see `pyproject.toml`)
 
-### Install the env (Conda version)
-1. Install basic in a new Conda env:
+### Install the env (uv version)
+1. Install dependencies using `uv`:
    ```bash
-    conda env create -n ENV_NAME -f environment.yaml
-   
+   make install
+   ```
+
 ### Run the app
-1. **Run the main script**:
+1. **Visualize rewards**:
    ```bash
-   python app/main.py
+   python app/visualize_rewards.py
+   ```
+2. **Run training (PPO)**:
+   ```bash
+   make train
+   ```
+
+## Testing
+Run tests using:
+```bash
+make test
+```
 
 ## Conventions
 
@@ -36,10 +51,17 @@ This project standardizes physical units, angles, and time across the codebase f
   - At RL edges (actions/observations), values are plain numpy float arrays. Convert with .to_value(...) at boundaries.
 
 - Actions
-  - 3D delta-v vectors (ECI) in km/s. Magnitudes are clipped by env_config["max_delta_v_kms"].
+  - 3D delta-v vectors in the Earth-Centered Inertial (ECI) frame (km/s).
+  - Magnitudes are clipped by `env_config["max_delta_v_kms"]`.
 
 - Observations
-  - Flat float vectors containing Keplerian elements and derived scalars (e.g., remaining Δv, pairwise distances in km).
+  - Flat float vectors containing Keplerian elements and derived scalars (e.g., remaining Δv, pairwise distances).
+  - Normalization:
+    - Semi-major axis: Centered around 7000 km, scaled by 1000 km.
+    - Eccentricity: Already in [0, 1].
+    - Angles (i, RAAN, argp, M): Normalized to [-1, 1] (wrapped to $[-\pi, \pi]$ then divided by $\pi$).
+    - Remaining Δv: Normalized by the initial fuel budget.
+    - Distances: Scaled by 1000 km.
 
 - Distances
   - Pairwise ECI distances and similar quantities are expressed in kilometers (km).
@@ -50,27 +72,28 @@ This project standardizes physical units, angles, and time across the codebase f
 
 ## Learn to parametrize
 
-Multiple modes are available for the various features.
+Multiple modes and features are available and parameterizable. # TODO : detail the parameters
 
 ### Observation space
 
-- [x] **Parameters and distance**: Each satellite observes the keplerian parameters of all satellites (targets and interceptors), as well as their current distance, and its own remaining delta-V. Best for a prograde chases, specifically approach-and-maintain.
-- [ ] **Parameters and close approaches**: Each satellite observes the keplerian parameters of all satellites (targets and interceptors), as well as information relative to the next closest approach to each other satellites (approach distance and velocity, and time remaining to the closest approach), and its own remaining delta-V. Best for retrograde seed-and-destroy.
+- [x] **Keplerian elements and distance**: Each satellite observes its own normalized Keplerian parameters and remaining fuel, as well as the normalized Keplerian parameters and relative distance of all other satellites.
+- [ ] **Close approaches**: (Coming soon) Inclusion of time-to-closest-approach and distance-at-closest-approach in observations.
 
 ### Action space
 
-- [x] **TNW Maneuvers**: Agents learn to directly choose the maneuver parameters in the TNW local orbital frame.
-- [ ] **Keplerian Target Orbit**: Agents learn to choose on which orbit they shall be next. The optimal maneuver delta-V is then determined and applied to the satellite.
+- [x] **ECI Δv Maneuvers**: Agents choose 3D delta-v vectors in the ECI frame.
+- [ ] **TNW Maneuvers**: (**Not** Planned) Maneuvers defined in the TNW local frame.
+- [ ] **Keplerian Target Orbit**: (**Not** Planned) Agents choose a target orbit; the environment computes and applies the required Δv.
 
 ### Interceptors objective
 
-- [x] **Seek-and-destroy**: The distance to targets must be reduced to zero as fast as possible, regardless of relative speed.
-- [ ] **Approach-and-maintain (coming)**: The distance to targets must be reduced in a cost-efficient manner, then a set distance must be kept.
+- [x] **Seek-and-destroy**: Distance to targets is minimized using reciprocal distance reward shaping.
+- [ ] **Approach-and-maintain**: (Planned) Minimize distance then maintain a stable offset.
 
 ### Targets objective
 
-- [x] **Evade**: Kept a non-null distance with all interceptors at low fuel cost, without any bounds of movement.
-- [ ] **Station keeping**: Stay inside a given orbit box, while evading interceptors.
+- [x] **Evade**: Maintain safety distance from interceptors at low fuel cost.
+- [ ] **Station keeping**: (Planned) Stay within an orbital slot while evading interceptors.
 
 ## Main features
 - **Orbital Environment Builder**: Creates an environment containing target and interceptor satellites. *Based on [`Poliastro`](https://docs.poliastro.space/en/stable/) and [`Astropy`](https://www.astropy.org/)*. Manages:
@@ -78,58 +101,53 @@ Multiple modes are available for the various features.
   - Orbital maneuvers,
   - Proximity approach computation,
   - Collision probability estimation.
-- **MADDPG Policy Learning**: Teach the interceptors to reduce the distance with targets and the targets to evade collisions using a fuel efficient maneuvers. *Based on [`RLlib`](https://docs.ray.io/en/latest/rllib/index.html), with a [`PyTorch`](https://pytorch.org/) backend*.
-- **Multiple Chase Scenarios**: Aggressor and targets orbits, swarm size, maneuvering capacity, mission objective are all parameterizable.
+- **Policy Learning**: Teach interceptors to track targets and targets to evade collisions using fuel-efficient maneuvers. Supports algorithms such as **MADDPG** and **PPO** via RLlib.
+- **Parametric Scenarios**: Easily configure orbital regions (LEO/MEO/GEO), swarm size, maneuvering capacity, and mission objectives.
+- **Modular Reward Engine**: Pluggable reward shaping functions (reciprocal distance, logarithmic, quadratic) for different mission goals.
+- **Visualization Tools**: Utilities to visualize reward landscapes and simulation results.
 
 ## Repository Structure
 ```
-marl_interceptor_evasion/
+marl-swarm-evasion/
 │
-├── app/                            # Top-level scripts
-│   └── main.py                     # Entry point for running simulations
+├── app/                            # Entry points and scripts
+│   ├── train.py                    # RLlib training script (PPO)
+│   └── visualize_rewards.py        # Reward shaping visualization tool
 │
 ├── docs/                           # Documentation and diagrams
-│
-├── environment.yml                 # Conda env with Poliastro, RLlib, etc.
 │
 ├── src/
 │   └── main/
 │       └── python/
-│           ├── environment/        # PettingZoo-compatible orbital env
-│           │   ├── orbital_env.py        # PettingZoo.parallel_env
-│           │   ├── reward_engine.py      # Modular reward computation
-│           │   └── wrappers.py           # Optional preprocessing (SuperSuit)
+│           ├── agents/             # Agent and orbital state abstractions
+│           │   ├── orbit_state.py     # Poliastro wrapper for propagation & Δv
+│           │   └── satellite_agent.py # Agent logic & observations
 │           │
-│           ├── agents/             # Agent abstractions
-│           │   ├── satellite_agent.py    # Satellite-level logic
-│           │   ├── orbit_state.py        # Poliastro wrapper with propagation + Δv
-│           │   └── maneuver.py           # Maneuver object and tracking
+│           ├── environment/        # PettingZoo-compatible orbital environment
+│           │   ├── orbital_env.py     # ParallelEnv implementation
+│           │   ├── reward_engine.py   # Modular reward computation
+│           │   └── scenarios.py       # Scenario generation templates
 │           │
-│           ├── orbital_meca/       # Low-level orbital tools
-│           │   ├── orbits.py             # delta-v computation
-│           │   └── approaches.py         # closest approach
+│           ├── orbital_meca/       # Orbital mechanics tools
+│           │   ├── approaches.py      # Closest approach calculations
+│           │   └── orbits.py          # ECI distance & orbital utilities
 │           │
-│           ├── scenarios/          # Scenario generator & config
-│           │   ├── scenario_loader.py    # Load/save scenario configs
-│           │   └── initial_conditions.py # Orbital element sampling
-│           │
-│           ├── models/             # RLlib-compatible models
-│           │
-│           ├── train/              # Training scripts/configs
-│           │   ├── train_rllib.py        # RLlib trainer launcher
-│           │   └── config.yaml           # RLlib training configuration
-│           │
-│           └── utils/
-│               ├── constants.py         # Global μ, Earth radius, etc.
-│               └── helpers.py           # Unit conversion, logs, etc.
+│           └── utils/              # Shared utilities
+│               ├── constants.py       # Physical & environment constants
+│               ├── helpers.py         # Logging & unit conversions
+│               ├── normalization.py   # Observation scaling
+│               ├── random.py          # Seeding & reproducibility
+│               └── units.py           # Unit guardrails
 │
+├── tests/                          # Test suite
+├── pyproject.toml                  # Dependencies and project metadata
 └── README.md
 ```
 
 ## License
 All Rights Reserved
 
-Copyright © 2025 Your Name
+Copyright © 2025 Grégoire MARIE
 
 This source code and all associated files are the property of the author.
 Unauthorized copying, distribution, modification, or sale of this software,

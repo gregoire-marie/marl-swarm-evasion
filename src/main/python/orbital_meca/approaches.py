@@ -34,13 +34,13 @@ def compute_closest_approaches_kep(elements_A, elements_B, epoch, N=3,
     aA, eA, iA, raanA, argpA, MA = elements_A
     aB, eB, iB, raanB, argpB, MB = elements_B
 
-    # Convert mean anomaly to eccentric anomaly (in radians)
-    E_A = M_to_E(MA.to(u.rad).value, eA.value)
-    E_B = M_to_E(MB.to(u.rad).value, eB.value)
+    # Convert mean anomaly to eccentric anomaly
+    E_A = M_to_E(MA, eA)
+    E_B = M_to_E(MB, eB)
 
-    # Convert eccentric anomaly to true anomaly (in radians)
-    nuA = E_to_nu(E_A, eA.value) * u.rad
-    nuB = E_to_nu(E_B, eB.value) * u.rad
+    # Convert eccentric anomaly to true anomaly
+    nuA = E_to_nu(E_A, eA)
+    nuB = E_to_nu(E_B, eB)
 
     # Create the orbits using classical Keplerian elements
     orbA = Orbit.from_classical(Earth, aA, eA, iA, raanA, argpA, nuA, epoch)
@@ -55,7 +55,7 @@ def compute_closest_approaches_kep(elements_A, elements_B, epoch, N=3,
     for t in times:
         rA, _ = orbA.propagate(t - epoch).rv()
         rB, _ = orbB.propagate(t - epoch).rv()
-        dist = (rA - rB).norm().to(u.km).value
+        dist = np.linalg.norm((rA - rB).to_value(u.km))
         distances.append(dist)
 
     distances = np.array(distances)
