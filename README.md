@@ -17,7 +17,7 @@ Target satellites learn to evade a swarm of interceptor satellites dynamically l
 ### Install the env (uv version)
 1. Install dependencies using `uv`:
    ```bash
-   uv sync
+   make install
    ```
 
 ### Run the app
@@ -27,13 +27,13 @@ Target satellites learn to evade a swarm of interceptor satellites dynamically l
    ```
 2. **Run training (PPO)**:
    ```bash
-   python app/train.py
+   make train
    ```
 
 ## Testing
 Run tests using:
 ```bash
-uv run pytest tests/ --cov=src/main/python --cov-report=term-missing
+make test
 ```
 
 ## Conventions
