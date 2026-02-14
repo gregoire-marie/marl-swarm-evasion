@@ -96,7 +96,7 @@ uv run python app/train.py [OPTIONS]
   ```
 - **Resume from a previous run**:
   ```bash
-  uv run python app/train.py --resume --local-dir ~/ray_results/orbital_marl
+  uv run python app/train.py --resume --local-dir ~/results/marl-swarm-evasion/ray_results
   ```
 
 ### Command-line Arguments

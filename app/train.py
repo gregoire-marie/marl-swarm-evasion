@@ -62,7 +62,7 @@ def parse_args():
     exec_group.add_argument("--num-gpus", type=float, default=0, help="Number of GPUs to use (can be fractional).")
     exec_group.add_argument("--checkpoint-freq", type=int, default=10, help="Frequency of checkpointing (in iterations).")
     exec_group.add_argument("--resume", action="store_true", help="Resume training from last checkpoint.")
-    exec_group.add_argument("--local-dir", type=str, default="~/ray_results/orbital_marl", help="Local directory for results.")
+    exec_group.add_argument("--local-dir", type=str, default="~/results/marl-swarm-evasion/ray_results", help="Local directory for results.")
     
     return parser.parse_args()
 
