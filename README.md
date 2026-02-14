@@ -133,12 +133,21 @@ Point TensorBoard to your results directory (default is `~/results/marl-swarm-ev
 tensorboard --logdir ~/results/marl-swarm-evasion/ray_results
 ```
 
+### Automatic Layout (Custom Scalars)
+
+The training script automatically configures a **"Custom Scalars"** dashboard in TensorBoard. When you open TensorBoard, look for the "Custom Scalars" tab at the top. This page is pre-configured to always display the most important orbital metrics in organized groups:
+
+*   **Success and Failures**: `intercept_success_rate` and `out_of_fuel_rate`.
+*   **Collisions**: `interceptors_collision_rate` and `targets_collision_rate`.
+*   **Episode Metrics**: Average steps per episode and episode length.
+*   **Training Performance**: Mean episode return.
+
 ### Key Metrics to Watch
 
 In the TensorBoard dashboard, you will find several categories of metrics:
 
 1.  **Ray RLlib Standard Metrics**:
-    *   `ray/tune/episode_reward_mean`: Overall performance of all agents.
+    *   `ray/tune/env_runners/episode_return_mean`: Overall performance of all agents.
     *   `ray/tune/info/learner/<policy_id>/learner_stats/policy_loss`: Training stability.
 
 2.  **Custom Orbital Metrics** (found under `ray/tune/env_runners/`):

@@ -10,6 +10,8 @@ from ray.tune.registry import register_env
 from src.main.python.environment.orbital_env import OrbitalEnv
 from src.main.python.environment.scenarios import pursuit_evasion_scenario
 from src.main.python.utils.helpers import get_logger
+from src.main.python.utils.callbacks import OrbitalPhysicsCallbacks
+from src.main.python.utils.tensorboard_helper import log_tensorboard_layout
 
 # Initialize logger
 logger = get_logger("train_app", level=logging.INFO)
@@ -137,6 +139,7 @@ def main():
             policy_mapping_fn=policy_mapping_fn,
         )
         .debugging(seed=args.seed)
+        .callbacks(OrbitalPhysicsCallbacks)
     )
     
     # Prepare storage path
@@ -145,6 +148,9 @@ def main():
         os.makedirs(storage_path)
     
     logger.info(f"Results will be saved to: {storage_path}")
+    
+    # Log TensorBoard layout for custom scalars
+    log_tensorboard_layout(storage_path)
     
     # Start training
     tune.run(
