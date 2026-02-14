@@ -101,25 +101,25 @@ uv run python app/train.py [OPTIONS]
 
 ### Command-line Arguments
 
-| Argument | Type | Default | Description                                                                                   |
-| :--- | :--- | :--- |:----------------------------------------------------------------------------------------------|
-| **Scenario** | | |                                                                                               |
-| `--n-interceptors` | int | 1 | Number of interceptor agents.                                                                 |
-| `--n-targets` | int | 1 | Number of target agents.                                                                      |
-| `--timestep` | float | 60.0 | Simulation timestep in seconds.                                                               |
-| `--episode-length` | int | 100 | Number of steps per episode.                                                                  |
-| **Training** | | |                                                                                               |
-| `--iterations` | int | 20 | Number of training iterations.                                                                |
-| `--batch-size` | int | 4000 | Training batch size : Number of environment timesteps (across all workers) before an Algorithm update. |
-| `--lr` | float | 5e-5 | Learning rate.                                                                                |
-| `--gamma` | float | 0.99 | Discount factor.                                                                              |
-| `--seed` | int | 42 | Random seed.                                                                                  |
-| **Execution** | | |                                                                                               |
-| `--num-workers` | int | 1 | Number of rollout workers (parallel envs).                                                    |
-| `--num-gpus` | float | 0 | Number of GPUs (can be fractional).                                                           |
-| `--checkpoint-freq`| int | 10 | Frequency of checkpointing.                                                                   |
-| `--resume` | flag | - | Resume training from the last checkpoint.                                                     |
-| `--local-dir` | str | `~/ray_results/orbital_marl` | Directory for results and checkpoints.                                                        |
+| Argument | Type | Default | Description                                                                                                                                                              |
+| :--- | :--- | :--- |:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Scenario** | | |                                                                                                                                                                          |
+| `--n-interceptors` | int | 1 | Number of interceptor agents.                                                                                                                                            |
+| `--n-targets` | int | 1 | Number of target agents.                                                                                                                                                 |
+| `--timestep` | float | 60.0 | Simulation timestep in seconds.                                                                                                                                          |
+| `--episode-length` | int | 100 | Maximum number of steps per episode (any collision causes an early termination).                                                                                         |
+| **Training** | | |                                                                                                                                                                          |
+| `--iterations` | int | 20 | Number of training iterations.                                                                                                                                           |
+| `--batch-size` | int | 4000 | Training batch size : number of environment timesteps (across all workers) before a weight update. Cause: at least `batch-size`/`episode-length` episodes are performed. |
+| `--lr` | float | 5e-5 | Learning rate.                                                                                                                                                           |
+| `--gamma` | float | 0.99 | Discount factor.                                                                                                                                                         |
+| `--seed` | int | 42 | Random seed.                                                                                                                                                             |
+| **Execution** | | |                                                                                                                                                                          |
+| `--num-workers` | int | 1 | Number of rollout workers (parallel envs).                                                                                                                               |
+| `--num-gpus` | float | 0 | Number of GPUs (can be fractional).                                                                                                                                      |
+| `--checkpoint-freq`| int | 10 | Frequency of checkpointing.                                                                                                                                              |
+| `--resume` | flag | - | Resume training from the last checkpoint.                                                                                                                                |
+| `--local-dir` | str | `~/ray_results/orbital_marl` | Directory for results and checkpoints.                                                                                                                                   |
 
 ## Learn to parametrize
 
