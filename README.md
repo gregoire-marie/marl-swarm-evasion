@@ -17,7 +17,7 @@ Target satellites learn to evade a swarm of interceptor satellites dynamically l
 - **Hardware**: A good GPU.
 - **Software**: Python 3.9.21 (see `pyproject.toml`)
 
-### Install the env (uv version)
+### Install the env (uv)
 1. Install dependencies using `uv`:
    ```bash
    make install
