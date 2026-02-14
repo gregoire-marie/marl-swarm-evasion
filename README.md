@@ -12,7 +12,7 @@ Target satellites learn to evade a swarm of interceptor satellites dynamically l
 ## Quick Start
 ### Requirements
 - **Hardware**: A good GPU.
-- **Software**: Python 3.9 (see pyproject.toml)
+- **Software**: Python 3.9.21 (see `pyproject.toml`)
 
 ### Install the env (uv version)
 1. Install dependencies using `uv`:
@@ -48,11 +48,17 @@ This project standardizes physical units, angles, and time across the codebase f
   - At RL edges (actions/observations), values are plain numpy float arrays. Convert with .to_value(...) at boundaries.
 
 - Actions
-  - 3D delta-v vectors (ECI) in km/s. Magnitudes are clipped by env_config["max_delta_v_kms"].
+  - 3D delta-v vectors in the Earth-Centered Inertial (ECI) frame (km/s).
+  - Magnitudes are clipped by `env_config["max_delta_v_kms"]`.
 
 - Observations
-  - Flat float vectors containing Keplerian elements and derived scalars (e.g., remaining Δv, pairwise distances in km).
-  - Values are normalized to [-1, 1] or [0, 1] for training stability (e.g., semi-major axis is centered around 7000km, angles are scaled by $\pi$).
+  - Flat float vectors containing Keplerian elements and derived scalars (e.g., remaining Δv, pairwise distances).
+  - Normalization:
+    - Semi-major axis: Centered around 7000 km, scaled by 1000 km.
+    - Eccentricity: Already in [0, 1].
+    - Angles (i, RAAN, argp, M): Normalized to [-1, 1] (wrapped to $[-\pi, \pi]$ then divided by $\pi$).
+    - Remaining Δv: Normalized by the initial fuel budget.
+    - Distances: Scaled by 1000 km.
 
 - Distances
   - Pairwise ECI distances and similar quantities are expressed in kilometers (km).
@@ -63,27 +69,28 @@ This project standardizes physical units, angles, and time across the codebase f
 
 ## Learn to parametrize
 
-Multiple modes are available for the various features.
+Multiple modes and features are available and parameterizable. # TODO : detail the parameters
 
 ### Observation space
 
-- [x] **Parameters and distance**: Each satellite observes the keplerian parameters of all satellites (targets and interceptors), as well as their current distance, and its own remaining delta-V. Best for a prograde chases, specifically approach-and-maintain.
-- [ ] **Parameters and close approaches**: Each satellite observes the keplerian parameters of all satellites (targets and interceptors), as well as information relative to the next closest approach to each other satellites (approach distance and velocity, and time remaining to the closest approach), and its own remaining delta-V. Best for retrograde seed-and-destroy.
+- [x] **Keplerian elements and distance**: Each satellite observes its own normalized Keplerian parameters and remaining fuel, as well as the normalized Keplerian parameters and relative distance of all other satellites.
+- [ ] **Close approaches**: (Coming soon) Inclusion of time-to-closest-approach and distance-at-closest-approach in observations.
 
 ### Action space
 
-- [x] **TNW Maneuvers**: Agents learn to directly choose the maneuver parameters in the TNW local orbital frame.
-- [ ] **Keplerian Target Orbit**: Agents learn to choose on which orbit they shall be next. The optimal maneuver delta-V is then determined and applied to the satellite.
+- [x] **ECI Δv Maneuvers**: Agents choose 3D delta-v vectors in the ECI frame.
+- [ ] **TNW Maneuvers**: (**Not** Planned) Maneuvers defined in the TNW local frame.
+- [ ] **Keplerian Target Orbit**: (**Not** Planned) Agents choose a target orbit; the environment computes and applies the required Δv.
 
 ### Interceptors objective
 
-- [x] **Seek-and-destroy**: The distance to targets must be reduced to zero as fast as possible, regardless of relative speed.
-- [ ] **Approach-and-maintain (coming)**: The distance to targets must be reduced in a cost-efficient manner, then a set distance must be kept.
+- [x] **Seek-and-destroy**: Distance to targets is minimized using reciprocal distance reward shaping.
+- [ ] **Approach-and-maintain**: (Planned) Minimize distance then maintain a stable offset.
 
 ### Targets objective
 
-- [x] **Evade**: Kept a non-null distance with all interceptors at low fuel cost, without any bounds of movement.
-- [ ] **Station keeping**: Stay inside a given orbit box, while evading interceptors.
+- [x] **Evade**: Maintain safety distance from interceptors at low fuel cost.
+- [ ] **Station keeping**: (Planned) Stay within an orbital slot while evading interceptors.
 
 ## Main features
 - **Orbital Environment Builder**: Creates an environment containing target and interceptor satellites. *Based on [`Poliastro`](https://docs.poliastro.space/en/stable/) and [`Astropy`](https://www.astropy.org/)*. Manages:
@@ -91,35 +98,34 @@ Multiple modes are available for the various features.
   - Orbital maneuvers,
   - Proximity approach computation,
   - Collision probability estimation.
-- **Policy Learning**: Teach the interceptors to reduce the distance with targets and the targets to evade collisions using fuel efficient maneuvers. Supports algorithms such as **MADDPG** and **PPO** via RLlib.
-- **Multiple Chase Scenarios**: Aggressor and targets orbits, swarm size, maneuvering capacity, mission objective are all parameterizable.
+- **Policy Learning**: Teach interceptors to track targets and targets to evade collisions using fuel-efficient maneuvers. Supports algorithms such as **MADDPG** and **PPO** via RLlib.
+- **Parametric Scenarios**: Easily configure orbital regions (LEO/MEO/GEO), swarm size, maneuvering capacity, and mission objectives.
+- **Modular Reward Engine**: Pluggable reward shaping functions (reciprocal distance, logarithmic, quadratic) for different mission goals.
+- **Visualization Tools**: Utilities to visualize reward landscapes and simulation results.
 
 ## Repository Structure
 ```
-marl_interceptor_evasion/
+marl-swarm-evasion/
 │
-├── app/                            # Top-level scripts
+├── app/                            # Entry points and scripts
 │   ├── train.py                    # RLlib training script (PPO)
 │   └── visualize_rewards.py        # Reward shaping visualization tool
 │
 ├── docs/                           # Documentation and diagrams
 │
-├── pyproject.toml              # Project configuration and dependencies
-├── uv.lock                     # Locked dependencies
-│
 ├── src/
 │   └── main/
 │       └── python/
-│           ├── agents/             # Agent abstractions
+│           ├── agents/             # Agent and orbital state abstractions
 │           │   ├── orbit_state.py     # Poliastro wrapper for propagation & Δv
-│           │   └── satellite_agent.py # Satellite-level logic & observations
+│           │   └── satellite_agent.py # Agent logic & observations
 │           │
-│           ├── environment/        # PettingZoo-compatible orbital env
-│           │   ├── orbital_env.py     # PettingZoo ParallelEnv implementation
+│           ├── environment/        # PettingZoo-compatible orbital environment
+│           │   ├── orbital_env.py     # ParallelEnv implementation
 │           │   ├── reward_engine.py   # Modular reward computation
 │           │   └── scenarios.py       # Scenario generation templates
 │           │
-│           ├── orbital_meca/       # Low-level orbital mechanics tools
+│           ├── orbital_meca/       # Orbital mechanics tools
 │           │   ├── approaches.py      # Closest approach calculations
 │           │   └── orbits.py          # ECI distance & orbital utilities
 │           │
@@ -130,7 +136,8 @@ marl_interceptor_evasion/
 │               ├── random.py          # Seeding & reproducibility
 │               └── units.py           # Unit guardrails
 │
-├── tests/                          # 100% coverage test suite
+├── tests/                          # Test suite
+├── pyproject.toml                  # Dependencies and project metadata
 └── README.md
 ```
 
