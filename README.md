@@ -139,7 +139,7 @@ The training script automatically configures a **"Custom Scalars"** dashboard in
 
 *   **Success and Failures**: `intercept_success_rate` and `out_of_fuel_rate`.
 *   **Collisions**: `interceptors_collision_rate` and `targets_collision_rate`.
-*   **Episode Metrics**: Average steps per episode and episode length.
+*   **Episode Metrics**: Average steps per episode `episode_steps` (custom) and episode length `episode_len_mean` (default).
 *   **Training Performance**: Mean episode return.
 
 ### Key Metrics to Watch
