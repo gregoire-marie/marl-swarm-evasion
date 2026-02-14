@@ -13,7 +13,7 @@ install:
 	uv sync
 
 test:
-	uv run pytest tests/ --cov=src/main/python --cov-report=term-missing
+	uv run pytest tests/
 
 ci:
 	uv run pytest tests/ --maxfail=3 --disable-warnings --tb=short --cov=src/main/python --cov-report=term-missing --cov-report=xml
