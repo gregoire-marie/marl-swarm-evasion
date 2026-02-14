@@ -29,8 +29,37 @@ jobs:
     - name: Run tests
       run: make ci
 
-    - name: Upload coverage report
-      uses: actions/upload-artifact@v4
+    - name: Get Coverage
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      id: coverage
+      shell: bash
+      run: |
+        set -euo pipefail
+        test -f coverage.xml
+    
+        TOTAL="$(python - <<'PY'
+        import xml.etree.ElementTree as ET
+        root = ET.parse("coverage.xml").getroot()
+        print(round(float(root.attrib["line-rate"]) * 100))
+        PY
+        )"
+    
+        COLOR="$(python - <<PY
+        t = int($TOTAL)
+        print("red" if t < 50 else "orange" if t < 70 else "yellow" if t < 85 else "green" if t < 95 else "brightgreen")
+        PY
+        )"
+    
+        echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+        echo "color=$COLOR" >> "$GITHUB_OUTPUT"
+
+    - name: Create Badge
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: schneegans/dynamic-badges-action@v1.7.0
       with:
-        name: coverage-xml
-        path: coverage.xml
+        auth: ${{ secrets.GIST_SECRET }}
+        gistID: PLACEHOLDER_GIST_ID
+        filename: coverage.json
+        label: Coverage
+        message: ${{ steps.coverage.outputs.total }}%
+        color: ${{ steps.coverage.outputs.color }}
