@@ -61,6 +61,7 @@ def parse_args():
     exec_group.add_argument("--num-gpus", type=float, default=0, help="Number of GPUs to use (can be fractional).")
     exec_group.add_argument("--checkpoint-freq", type=int, default=1, help="Frequency of checkpointing (in iterations).")
     exec_group.add_argument("--resume", action="store_true", help="Resume training from last checkpoint.")
+    exec_group.add_argument("--name", type=str, required=False, default=None, help="Name of the experiment.")
     exec_group.add_argument("--local-dir", type=str, default="~/results/marl-swarm-evasion/ray_results", help="Local directory for results.")
     
     return parser.parse_args()
@@ -142,15 +143,25 @@ def main():
     )
     
     # Prepare storage path
-    storage_path = os.path.expanduser(args.local_dir)
+    storage_path = os.path.abspath(os.path.expanduser(args.local_dir))
+    storage_path = os.path.normpath(storage_path)
+    exp_name = args.name
+
+    if args.resume and not exp_name:
+        # If resume is requested but no name is provided, 
+        # we assume local_dir is the experiment directory.
+        exp_name = os.path.basename(storage_path)
+        storage_path = os.path.dirname(storage_path)
+
     if not os.path.exists(storage_path):
         os.makedirs(storage_path)
     
-    logger.info(f"Results will be saved to: {storage_path}")
+    logger.info(f"Results will be saved to: {os.path.join(storage_path, exp_name) if exp_name else storage_path}")
 
     # Start training
     tune.run(
         "PPO",
+        name=exp_name,
         config=config.to_dict(),
         stop={"training_iteration": args.iterations},
         checkpoint_freq=args.checkpoint_freq,
