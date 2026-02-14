@@ -119,7 +119,36 @@ uv run python app/train.py [OPTIONS]
 | `--num-gpus` | float | 0 | Number of GPUs (can be fractional).                                                                                                                                      |
 | `--checkpoint-freq`| int | 10 | Frequency of checkpointing.                                                                                                                                              |
 | `--resume` | flag | - | Resume training from the last checkpoint.                                                                                                                                |
-| `--local-dir` | str | `~/ray_results/orbital_marl` | Directory for results and checkpoints.                                                                                                                                   |
+| `--local-dir` | str | `~/results/marl-swarm-evasion/ray_results` | Directory for results and checkpoints.                                                                                                                                   |
+
+## Monitoring
+
+You can monitor the training progress in real-time using **TensorBoard**. This allows you to track not only the rewards but also domain-specific success metrics.
+
+### Launching TensorBoard
+
+Point TensorBoard to your results directory (default is `~/results/marl-swarm-evasion/ray_results`):
+
+```bash
+tensorboard --logdir ~/results/marl-swarm-evasion/ray_results
+```
+
+### Key Metrics to Watch
+
+In the TensorBoard dashboard, you will find several categories of metrics:
+
+1.  **Ray RLlib Standard Metrics**:
+    *   `ray/tune/episode_reward_mean`: Overall performance of all agents.
+    *   `ray/tune/info/learner/<policy_id>/learner_stats/policy_loss`: Training stability.
+
+2.  **Custom Orbital Metrics** (found under `ray/tune/env_runners/`):
+    *   `intercept_success_rate`: Percentage of episodes where an interceptor successfully reached a target.
+    *   `interceptors_collision_rate`: Rate of collisions between interceptors.
+    *   `targets_collision_rate`: Rate of collisions between targets.
+    *   `out_of_fuel_rate`: Percentage of episodes ending because agents ran out of Δv.
+    *   `episode_steps`: Average number of steps per episode (shorter episodes often indicate early collisions or successes).
+
+These metrics provide a direct view of whether your agents are actually learning the desired orbital behaviors or just maximizing rewards through unintended shortcuts.
 
 ## Learn to parametrize
 
