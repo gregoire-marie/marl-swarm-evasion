@@ -26,11 +26,15 @@ Target satellites learn to evade a swarm of interceptor satellites dynamically l
 ### Run the app
 1. **Visualize rewards**:
    ```bash
-   python app/visualize_rewards.py
+   uv run python app/visualize_rewards.py
    ```
 2. **Run training (PPO)**:
    ```bash
+   # Simple run (1 interceptor, 1 target)
    make train
+
+   # Advanced run with custom parameters
+   uv run python app/train.py --n-interceptors 3 --n-targets 1 --iterations 100 --num-workers 4
    ```
 
 ## Testing
@@ -70,9 +74,54 @@ This project standardizes physical units, angles, and time across the codebase f
   - Use utils.random.set_global_seed(seed) or pass seed to env.reset(seed=...) to seed Python, NumPy, and PyTorch (if installed).
   - Tests and examples use fixed epochs and deterministic elements for reproducibility.
 
-## Learn to parametrize
+## Training
 
-Multiple modes and features are available and parameterizable. # TODO : detail the parameters
+The `app/train.py` script is the main entry point for training the agents.
+
+### Basic Usage
+
+```bash
+uv run python app/train.py [OPTIONS]
+```
+
+### Common Examples
+
+- **Small scale training**:
+  ```bash
+  uv run python app/train.py --n-interceptors 1 --n-targets 1 --iterations 50
+  ```
+- **Parallelized training**:
+  ```bash
+  uv run python app/train.py --n-interceptors 5 --n-targets 2 --num-workers 8 --batch-size 10000
+  ```
+- **Resume from a previous run**:
+  ```bash
+  uv run python app/train.py --resume --local-dir ~/ray_results/orbital_marl
+  ```
+
+### Command-line Arguments
+
+| Argument | Type | Default | Description                                                                                   |
+| :--- | :--- | :--- |:----------------------------------------------------------------------------------------------|
+| **Scenario** | | |                                                                                               |
+| `--n-interceptors` | int | 1 | Number of interceptor agents.                                                                 |
+| `--n-targets` | int | 1 | Number of target agents.                                                                      |
+| `--timestep` | float | 60.0 | Simulation timestep in seconds.                                                               |
+| `--episode-length` | int | 100 | Number of steps per episode.                                                                  |
+| **Training** | | |                                                                                               |
+| `--iterations` | int | 20 | Number of training iterations.                                                                |
+| `--batch-size` | int | 4000 | Training batch size : Number of environment timesteps (across all workers) before an Algorithm update. |
+| `--lr` | float | 5e-5 | Learning rate.                                                                                |
+| `--gamma` | float | 0.99 | Discount factor.                                                                              |
+| `--seed` | int | 42 | Random seed.                                                                                  |
+| **Execution** | | |                                                                                               |
+| `--num-workers` | int | 1 | Number of rollout workers (parallel envs).                                                    |
+| `--num-gpus` | float | 0 | Number of GPUs (can be fractional).                                                           |
+| `--checkpoint-freq`| int | 10 | Frequency of checkpointing.                                                                   |
+| `--resume` | flag | - | Resume training from the last checkpoint.                                                     |
+| `--local-dir` | str | `~/ray_results/orbital_marl` | Directory for results and checkpoints.                                                        |
+
+## Learn to parametrize
 
 ### Observation space
 
