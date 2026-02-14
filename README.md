@@ -159,6 +159,38 @@ In the TensorBoard dashboard, you will find several categories of metrics:
 
 These metrics provide a direct view of whether your agents are actually learning the desired orbital behaviors or just maximizing rewards through unintended shortcuts.
 
+## Inference and Visualization
+
+After training your agents, you can run an inference session to visualize the orbital situation and agent behaviors.
+
+### Running Inference
+
+Use the `app/inference.py` script to load a checkpoint and run a single episode:
+
+```bash
+uv run python app/inference.py /path/to/checkpoint --n-interceptors 1 --n-targets 1 --episode-length 100
+```
+
+### Command-line Arguments (Inference)
+
+| Argument | Type | Default                 | Description |
+| :--- | :--- |:------------------------| :--- |
+| `checkpoint` | str | -                       | **Required**. Path to the RLlib checkpoint directory. |
+| `--n-interceptors` | int | 1                       | Number of interceptor agents. |
+| `--n-targets` | int | 1                       | Number of target agents. |
+| `--timestep` | float | 60.0                    | Simulation timestep in seconds. |
+| `--episode-length` | int | 100                     | Number of steps per episode. |
+| `--seed` | int | 42                      | Random seed for the scenario. |
+| `--out-dir` | str | `$checkpoint/inference` | Directory to save generated plots. |
+
+### Generated Plots
+
+The script produces several plots in the output directory:
+
+1.  **`trajectories_3d.png`**: A 3D view of the orbital trajectories for all agents, with Earth for reference.
+2.  **`metrics_over_time.png`**: Time-series of rewards, remaining fuel (Δv), and action magnitudes for each agent.
+3.  **`distances.png`**: Relative distances between all pairs of agents over time (log scale), with the collision threshold highlighted.
+
 ## Learn to parametrize
 
 ### Observation space
@@ -199,6 +231,7 @@ marl-swarm-evasion/
 │
 ├── app/                            # Entry points and scripts
 │   ├── train.py                    # RLlib training script (PPO)
+│   ├── inference.py                # Inference and visualization script
 │   └── visualize_rewards.py        # Reward shaping visualization tool
 │
 ├── docs/                           # Documentation and diagrams
