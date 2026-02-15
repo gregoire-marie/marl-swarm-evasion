@@ -14,6 +14,19 @@ from src.main.python.utils.callbacks import OrbitalPhysicsCallbacks
 
 # Initialize logger
 logger = get_logger("train_app", level=logging.INFO)
+SUPPORTED_MANEUVER_FRAMES = ("ECI", "TNW")
+
+
+def parse_maneuver_frame(value: str) -> str:
+    """
+    Parses the maneuver frame string, unsensitive to the case.
+    """
+    frame = str(value).strip().upper()
+    if frame not in SUPPORTED_MANEUVER_FRAMES:
+        raise argparse.ArgumentTypeError(
+            f"Unsupported maneuver frame '{value}'. Supported frames: {list(SUPPORTED_MANEUVER_FRAMES)}."
+        )
+    return frame
 
 def env_creator(config):
     """
@@ -32,6 +45,8 @@ def env_creator(config):
         env_config["episode_length"] = config["episode_length"]
     if "freeze_targets" in config:
         env_config["freeze_targets"] = config["freeze_targets"]
+    if "maneuver_frame" in config:
+        env_config["maneuver_frame"] = str(config["maneuver_frame"]).upper()
         
     env = OrbitalEnv(agent_configs, env_config)
     return ParallelPettingZooEnv(env)
@@ -48,6 +63,12 @@ def parse_args():
     scenario_group.add_argument("--n-targets", type=int, default=1, help="Number of target agents.")
     scenario_group.add_argument("--timestep", type=float, default=60.0, help="Simulation timestep in seconds.")
     scenario_group.add_argument("--episode-length", type=int, default=100, help="Number of steps per episode.")
+    scenario_group.add_argument(
+        "--maneuver-frame",
+        type=parse_maneuver_frame,
+        default="ECI",
+        help="Action frame for maneuvers: ECI or TNW.",
+    )
     scenario_group.add_argument(
         "--freeze-targets",
         action="store_true",
@@ -99,6 +120,7 @@ def main():
         "n_targets": args.n_targets,
         "timestep_sec": args.timestep,
         "episode_length": args.episode_length,
+        "maneuver_frame": args.maneuver_frame,
         "seed": args.seed,
         "freeze_targets": args.freeze_targets,
     }
@@ -121,6 +143,7 @@ def main():
     logger.info(f"Initialized training with {args.n_interceptors} interceptors and {args.n_targets} targets.")
     logger.info(f"Interceptor Obs Space: {int_obs_space}")
     logger.info(f"Target Obs Space: {tar_obs_space}")
+    logger.info(f"Maneuver frame: {args.maneuver_frame}")
     logger.info(f"Targets maneuvering disabled: {args.freeze_targets}")
 
     policies_to_train = ["interceptor_policy"] if args.freeze_targets else None
