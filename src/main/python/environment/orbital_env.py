@@ -72,6 +72,7 @@ class OrbitalEnv(ParallelEnv):
         self.timestep = TimeDelta(env_config.get("timestep_sec", 10), format="sec")
         self.episode_length = env_config.get("episode_length", 1000)
         self.max_delta_v = env_config.get("max_delta_v_kms", 0.1)  # km/s
+        self.freeze_targets = bool(env_config.get("freeze_targets", False))
 
         self._current_time = None
         self._step_count = 0
@@ -135,18 +136,21 @@ class OrbitalEnv(ParallelEnv):
 
         # Apply actions
         for agent_id in self.agents:
-            dv_vector = actions.get(agent_id, None)
-            if dv_vector is None:
+            agent = self._agent_states[agent_id]
+            if self.freeze_targets and agent.role == "target":
                 dv = np.zeros(3, dtype=np.float32)
             else:
-                dv = np.asarray(dv_vector, dtype=np.float32)
-            
-            # Action clipping: enforce L2-norm constraint if it exceeds max_delta_v
-            norm = np.linalg.norm(dv)
-            if norm > self.max_delta_v:
-                dv = (dv / norm) * self.max_delta_v
+                dv_vector = actions.get(agent_id, None)
+                if dv_vector is None:
+                    dv = np.zeros(3, dtype=np.float32)
+                else:
+                    dv = np.asarray(dv_vector, dtype=np.float32)
+                
+                # Action clipping: enforce L2-norm constraint if it exceeds max_delta_v
+                norm = np.linalg.norm(dv)
+                if norm > self.max_delta_v:
+                    dv = (dv / norm) * self.max_delta_v
 
-            agent = self._agent_states[agent_id]
             agent.apply_action(dv, self._current_time)
 
         # Propagate all agents to the new current time
