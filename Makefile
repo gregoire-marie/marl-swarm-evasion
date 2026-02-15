@@ -4,9 +4,8 @@
 help:
 	@echo "Available targets:"
 	@echo "  install   Install dependencies using uv"
-	@echo "  test      Run tests with coverage"
+	@echo "  test      Run tests without coverage"
 	@echo "  ci        Run tests in CI mode (with XML coverage)"
-	@echo "  train     Run training script"
 	@echo "  clean     Clean up temporary files"
 
 install:
@@ -17,9 +16,6 @@ test:
 
 ci:
 	uv run pytest tests/ --maxfail=3 --disable-warnings --tb=short --cov=src/main/python --cov-report=term-missing --cov-report=xml
-
-train:
-	uv run python app/train.py
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
