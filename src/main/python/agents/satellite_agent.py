@@ -51,19 +51,30 @@ class SatelliteAgent:
         self.orbit_state = OrbitState(self.initial_elements, epoch)
         self.used_delta_v = 0.0 * u.km / u.s
 
-    def apply_action(self, dv_vector: np.ndarray, time: Time):
+    def apply_action(self, dv_vector: np.ndarray, time: Time, maneuver_frame: str = "ECI"):
         """
         Applies an instantaneous delta-v maneuver at a given time.
 
         Args:
-            dv_vector (np.ndarray): Delta-v vector in ECI frame, shape (3,), values in km/s (floats).
+            dv_vector (np.ndarray or Quantity): Delta-v vector in the selected
+                maneuver frame, shape (3,), values in km/s.
             time (Time): Time at which the maneuver is performed.
+            maneuver_frame (str): Maneuver frame, either "ECI" or "TNW".
         """
-        dv = dv_vector * u.km / u.s  # Quantity[km/s]
-        if np.linalg.norm(dv_vector) > 0:
-            log.debug(f"[{self.id}] Applying Δv = {dv_vector} km/s at t={time.iso}")
+        if hasattr(dv_vector, "to"):
+            dv = dv_vector.to(u.km / u.s)
+            dv_values = np.asarray(dv.to_value(u.km / u.s), dtype=float)
+        else:
+            dv_values = np.asarray(dv_vector, dtype=float)
+            dv = dv_values * u.km / u.s
 
-        self.orbit_state.apply_delta_v(dv, time)
+        if dv_values.shape != (3,):
+            raise ValueError(f"Delta-v action must have shape (3,), got {dv_values.shape}.")
+
+        if np.linalg.norm(dv_values) > 0:
+            log.debug(f"[{self.id}] Applying Δv = {dv_values} km/s in {maneuver_frame} at t={time.iso}")
+
+        self.orbit_state.apply_delta_v(dv, time, maneuver_frame=maneuver_frame)
         # Accumulate used Δv as a Quantity[km/s] to preserve unit consistency
         self.used_delta_v += delta_v_norm(dv)
 

@@ -1,9 +1,10 @@
 import numpy as np
 from astropy import units as u
 from src.main.python.environment.orbital_env import OrbitalEnv
+from src.main.python.agents.orbit_state import OrbitState
 
 
-def make_dummy_config(n_agents=2):
+def make_dummy_config(n_agents=2, maneuver_frame="ECI"):
     """Returns test config with `n_agents` in LEO with spaced RAANs."""
     base_alt = 500.0  # km
     base_a = (6378.0 + base_alt) * u.km
@@ -30,6 +31,7 @@ def make_dummy_config(n_agents=2):
         "episode_length": 10,
         "start_time": "2025-01-01 00:00:00",
         "max_delta_v_kms": 0.1,
+        "maneuver_frame": maneuver_frame,
     }
 
     return agent_configs, env_config
@@ -178,3 +180,34 @@ def test_action_space_contains():
     assert space.shape == (3,)
     assert space.contains(np.array([0.05, 0.05, 0.05], dtype=np.float32))
     assert not space.contains(np.array([0.2, 0.0, 0.0], dtype=np.float32))
+
+
+def test_tnw_maneuver_frame_applies_expected_eci_burn():
+    agent_configs, env_config = make_dummy_config(n_agents=1, maneuver_frame="TNW")
+    env = OrbitalEnv(agent_configs, env_config)
+    env.reset()
+
+    agent_id = env.agents[0]
+    agent_state = env._agent_states[agent_id].orbit_state
+    burn_time = agent_state.epoch + env.timestep
+
+    # Build an independent reference state at maneuver time (before burn).
+    shadow_state = OrbitState(agent_state.get_keplerian(), agent_state.epoch)
+    shadow_state.propagate_to(burn_time)
+    _, v_before = shadow_state.get_rv()
+
+    raw_action = np.array([0.2, -0.01, 0.0], dtype=np.float32)  # exceeds max_delta_v
+    clipped = raw_action * (env.max_delta_v / np.linalg.norm(raw_action))
+    expected_dv_eci = shadow_state.tnw_to_eci(clipped * u.km / u.s)
+
+    env.step({agent_id: raw_action})
+    _, v_after = env._agent_states[agent_id].orbit_state.get_rv()
+
+    measured_dv = (v_after - v_before).to_value(u.km / u.s)
+    assert np.allclose(measured_dv, expected_dv_eci.to_value(u.km / u.s), atol=1e-8)
+
+
+def test_invalid_maneuver_frame_raises():
+    agent_configs, env_config = make_dummy_config(n_agents=1, maneuver_frame="BAD_FRAME")
+    with np.testing.assert_raises(ValueError):
+        OrbitalEnv(agent_configs, env_config)

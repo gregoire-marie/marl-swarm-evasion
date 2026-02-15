@@ -14,6 +14,16 @@ from src.main.python.environment.scenarios import pursuit_evasion_scenario
 from src.main.python.utils.helpers import get_logger
 
 logger = get_logger("inference_app")
+SUPPORTED_MANEUVER_FRAMES = ("ECI", "TNW")
+
+
+def parse_maneuver_frame(value: str) -> str:
+    frame = str(value).strip().upper()
+    if frame not in SUPPORTED_MANEUVER_FRAMES:
+        raise argparse.ArgumentTypeError(
+            f"Unsupported maneuver frame '{value}'. Supported frames: {list(SUPPORTED_MANEUVER_FRAMES)}."
+        )
+    return frame
 
 def env_creator(config):
     """
@@ -30,6 +40,8 @@ def env_creator(config):
         env_config["timestep_sec"] = config["timestep_sec"]
     if "episode_length" in config:
         env_config["episode_length"] = config["episode_length"]
+    if "maneuver_frame" in config:
+        env_config["maneuver_frame"] = str(config["maneuver_frame"]).upper()
         
     env = OrbitalEnv(agent_configs, env_config)
     return ParallelPettingZooEnv(env)
@@ -41,6 +53,12 @@ def parse_args():
     parser.add_argument("--n-targets", type=int, default=1, help="Number of target agents.")
     parser.add_argument("--timestep", type=float, default=60.0, help="Simulation timestep in seconds.")
     parser.add_argument("--episode-length", type=int, default=100, help="Number of steps per episode.")
+    parser.add_argument(
+        "--maneuver-frame",
+        type=parse_maneuver_frame,
+        default="ECI",
+        help="Action frame for maneuvers: ECI or TNW.",
+    )
     parser.add_argument("--seed", type=int, default=42, help="Random seed for the scenario.")
     parser.add_argument("--out-dir", type=str, required=False, help="Directory to save plots.")
     return parser.parse_args()
@@ -65,6 +83,7 @@ def main():
         "n_targets": args.n_targets,
         "timestep_sec": args.timestep,
         "episode_length": args.episode_length,
+        "maneuver_frame": args.maneuver_frame,
         "seed": args.seed
     }
     # We use the raw OrbitalEnv for easier data access, but we need to match RLlib's view if needed.
@@ -76,8 +95,10 @@ def main():
     )
     scenario_env_config["timestep_sec"] = args.timestep
     scenario_env_config["episode_length"] = args.episode_length
+    scenario_env_config["maneuver_frame"] = args.maneuver_frame
     
     env = OrbitalEnv(agent_configs, scenario_env_config)
+    logger.info(f"Using maneuver frame: {args.maneuver_frame}")
     
     observations, infos = env.reset(seed=args.seed)
     

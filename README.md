@@ -11,6 +11,7 @@ This is a project about swarm interceptor satellites evasion using multi-agent r
 A mixed target and interceptor satellite swarms cooperative-competitive environment, enabling multi-agent policy optimization with deep reinforcement learning using algorithms such as [MADDPG](https://arxiv.org/pdf/1706.02275) or [PPO](https://arxiv.org/abs/1707.06347). 
 
 Target satellites learn to evade a swarm of interceptor satellites dynamically learning seek-and-destroy strategies.
+Maneuvers are supported in both the inertial `ECI` frame and the local `TNW` frame.
 
 ## Quick Start
 ### Requirements
@@ -34,7 +35,7 @@ Target satellites learn to evade a swarm of interceptor satellites dynamically l
    make train
 
    # Advanced run with custom parameters
-   uv run python app/train.py --n-interceptors 3 --n-targets 1 --iterations 100 --num-workers 4
+   uv run python app/train.py --n-interceptors 3 --n-targets 1 --iterations 100 --num-workers 4 --maneuver-frame TNW
    ```
 
 ## Testing
@@ -55,7 +56,8 @@ This project standardizes physical units, angles, and time across the codebase f
   - At RL edges (actions/observations), values are plain numpy float arrays. Convert with .to_value(...) at boundaries.
 
 - Actions
-  - 3D delta-v vectors in the Earth-Centered Inertial (ECI) frame (km/s).
+  - 3D delta-v maneuver vectors in the `ECI` or `TNW` frame (km/s).
+  - In `TNW` mode, actions are converted to ECI at burn epoch before propagation.
   - Magnitudes are clipped by `env_config["max_delta_v_kms"]`.
 
 - Observations
@@ -94,6 +96,10 @@ uv run python app/train.py [OPTIONS]
   ```bash
   uv run python app/train.py --n-interceptors 5 --n-targets 2 --num-workers 8 --batch-size 10000
   ```
+- **Train with TNW maneuvers**:
+  ```bash
+  uv run python app/train.py --n-interceptors 2 --n-targets 1 --maneuver-frame tnw
+  ```
 - **Resume from a previous run**:
   ```bash
   uv run python app/train.py --resume --local-dir ~/results/marl-swarm-evasion/ray_results
@@ -108,6 +114,8 @@ uv run python app/train.py [OPTIONS]
 | `--n-targets` | int | 1                                          | Number of target agents.                                                                                                                                                 |
 | `--timestep` | float | 60.0                                       | Simulation timestep in seconds.                                                                                                                                          |
 | `--episode-length` | int | 100                                        | Maximum number of steps per episode (any collision causes an early termination).                                                                                         |
+| `--maneuver-frame` | str | `eci`                                      | Maneuver frame used for actions: `eci` or `tnw`.                                                                                                                         |
+| `--freeze-targets` | flag | -                                          | Force targets to apply zero Δv at each step.                                                                                                                             |
 | **Training** | |                                            |                                                                                                                                                                          |
 | `--iterations` | int | 20                                         | Number of training iterations.                                                                                                                                           |
 | `--batch-size` | int | 4000                                       | Training batch size : number of environment timesteps (across all workers) before a weight update. Cause: at least `batch-size`/`episode-length` episodes are performed. |
@@ -168,20 +176,21 @@ After training your agents, you can run an inference session to visualize the or
 Use the `app/inference.py` script to load a checkpoint and run a single episode:
 
 ```bash
-uv run python app/inference.py /path/to/checkpoint --n-interceptors 1 --n-targets 1 --episode-length 100
+uv run python app/inference.py /path/to/checkpoint --n-interceptors 1 --n-targets 1 --episode-length 100 --maneuver-frame tnw
 ```
 
 ### Command-line Arguments (Inference)
 
-| Argument | Type | Default                 | Description |
-| :--- | :--- |:------------------------| :--- |
+| Argument | Type | Default                 | Description                                           |
+| :--- | :--- |:------------------------|:------------------------------------------------------|
 | `checkpoint` | str | -                       | **Required**. Path to the RLlib checkpoint directory. |
-| `--n-interceptors` | int | 1                       | Number of interceptor agents. |
-| `--n-targets` | int | 1                       | Number of target agents. |
-| `--timestep` | float | 60.0                    | Simulation timestep in seconds. |
-| `--episode-length` | int | 100                     | Number of steps per episode. |
-| `--seed` | int | 42                      | Random seed for the scenario. |
-| `--out-dir` | str | `$checkpoint/inference` | Directory to save generated plots. |
+| `--n-interceptors` | int | 1                       | Number of interceptor agents.                         |
+| `--n-targets` | int | 1                       | Number of target agents.                              |
+| `--timestep` | float | 60.0                    | Simulation timestep in seconds.                       |
+| `--episode-length` | int | 100                     | Number of steps per episode.                          |
+| `--maneuver-frame` | str | `eci`                   | Maneuver frame used for actions: `eci` or `tnw`.      |
+| `--seed` | int | 42                      | Random seed for the scenario.                         |
+| `--out-dir` | str | `$checkpoint/inference` | Directory to save generated plots.                    |
 
 ### Generated Plots
 
@@ -200,8 +209,8 @@ The script produces several plots in the output directory:
 
 ### Action space
 
-- [x] **ECI Δv Maneuvers**: Agents choose 3D delta-v vectors in the ECI frame.
-- [ ] **TNW Maneuvers**: (**Not** Planned) Maneuvers defined in the TNW local frame.
+- [x] **ECI Δv Maneuvers**: Agents can choose 3D delta-v vectors in the ECI frame.
+- [x] **TNW Maneuvers**: Agents can choose 3D delta-v vectors in the TNW local frame (converted to ECI at burn epoch).
 - [ ] **Keplerian Target Orbit**: (**Not** Planned) Agents choose a target orbit; the environment computes and applies the required Δv.
 
 ### Interceptors objective

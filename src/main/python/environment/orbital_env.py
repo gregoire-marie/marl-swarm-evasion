@@ -7,6 +7,8 @@ from src.main.python.agents.satellite_agent import SatelliteAgent
 from src.main.python.environment.reward_engine import compute_rewards
 from src.main.python.utils.random import set_global_seed
 
+SUPPORTED_MANEUVER_FRAMES = {"ECI", "TNW"}
+
 
 class OrbitalEnv(ParallelEnv):
     """
@@ -14,7 +16,8 @@ class OrbitalEnv(ParallelEnv):
 
     This parallel environment simulates orbital propagation and delta-v maneuvers for
     satellite agents using Keplerian dynamics. Each agent can act independently with a
-    3D continuous delta-v vector in ECI frame. Designed for MARL training with RLlib.
+    3D continuous delta-v vector in a configurable frame ("ECI" or "TNW").
+    Designed for MARL training with RLlib.
 
     Unit conventions
     ----------------
@@ -63,6 +66,7 @@ class OrbitalEnv(ParallelEnv):
                 - "episode_length" (int): Maximum number of steps per episode.
                 - "start_time" (str): ISO date for simulation start (UTC).
                 - "max_delta_v_kms" (float): Max delta-v allowed per action (in km/s).
+                - "maneuver_frame" (str): Maneuver frame for actions, "ECI" or "TNW".
         """
         self.agents = list(agent_configs.keys())
         self.possible_agents = self.agents.copy()
@@ -72,6 +76,13 @@ class OrbitalEnv(ParallelEnv):
         self.timestep = TimeDelta(env_config.get("timestep_sec", 10), format="sec")
         self.episode_length = env_config.get("episode_length", 1000)
         self.max_delta_v = env_config.get("max_delta_v_kms", 0.1)  # km/s
+        self.maneuver_frame = str(env_config.get("maneuver_frame", "ECI")).strip().upper()
+        if self.maneuver_frame not in SUPPORTED_MANEUVER_FRAMES:
+            raise ValueError(
+                f"Unsupported maneuver frame '{self.maneuver_frame}'. "
+                f"Supported frames: {sorted(SUPPORTED_MANEUVER_FRAMES)}."
+            )
+        self.freeze_targets = bool(env_config.get("freeze_targets", False))
 
         self._current_time = None
         self._step_count = 0
@@ -135,19 +146,22 @@ class OrbitalEnv(ParallelEnv):
 
         # Apply actions
         for agent_id in self.agents:
-            dv_vector = actions.get(agent_id, None)
-            if dv_vector is None:
+            agent = self._agent_states[agent_id]
+            if self.freeze_targets and agent.role == "target":
                 dv = np.zeros(3, dtype=np.float32)
             else:
-                dv = np.asarray(dv_vector, dtype=np.float32)
-            
-            # Action clipping: enforce L2-norm constraint if it exceeds max_delta_v
-            norm = np.linalg.norm(dv)
-            if norm > self.max_delta_v:
-                dv = (dv / norm) * self.max_delta_v
+                dv_vector = actions.get(agent_id, None)
+                if dv_vector is None:
+                    dv = np.zeros(3, dtype=np.float32)
+                else:
+                    dv = np.asarray(dv_vector, dtype=np.float32)
+                
+                # Action clipping: enforce L2-norm constraint if it exceeds max_delta_v
+                norm = np.linalg.norm(dv)
+                if norm > self.max_delta_v:
+                    dv = (dv / norm) * self.max_delta_v
 
-            agent = self._agent_states[agent_id]
-            agent.apply_action(dv, self._current_time)
+            agent.apply_action(dv, self._current_time, maneuver_frame=self.maneuver_frame)
 
         # Propagate all agents to the new current time
         for agent in self._agent_states.values():
@@ -212,7 +226,8 @@ class OrbitalEnv(ParallelEnv):
         """
         Define the action space for a given agent.
 
-        Actions are 3D delta-v vectors (in ECI), bounded by max_delta_v.
+        Actions are 3D delta-v vectors in the selected maneuver frame
+        (`env_config["maneuver_frame"]`), bounded by max_delta_v.
 
         Args:
             agent_id (str): Agent identifier.
@@ -220,7 +235,7 @@ class OrbitalEnv(ParallelEnv):
         Returns:
             gymnasium.spaces.Box: Bounded 3D continuous action space [km/s].
         """
-        # 3D delta-v vector in ECI, bounded by max delta-v
+        # 3D delta-v vector in selected maneuver frame, bounded by max delta-v
         return Box(low=-self.max_delta_v,
                    high=self.max_delta_v,
                    shape=(3,),
