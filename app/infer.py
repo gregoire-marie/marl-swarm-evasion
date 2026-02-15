@@ -163,7 +163,6 @@ def main():
             history["actions"][agent_id].append(action)
 
         observations, rewards, terminations, truncations, step_infos = env.step(actions)
-        print(actions, observations)
 
         # Record data
         history["time"].append(step * args.timestep)
