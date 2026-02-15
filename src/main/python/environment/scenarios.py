@@ -2,6 +2,19 @@ import numpy as np
 from astropy import units as u
 from astropy.time import Time
 
+SUPPORTED_MANEUVER_FRAMES = {"ECI", "TNW"}
+
+
+def _normalize_maneuver_frame(maneuver_frame: str) -> str:
+    frame = str(maneuver_frame).strip().upper()
+    if frame not in SUPPORTED_MANEUVER_FRAMES:
+        raise ValueError(
+            f"Unsupported maneuver frame '{maneuver_frame}'. "
+            f"Supported frames: {sorted(SUPPORTED_MANEUVER_FRAMES)}."
+        )
+    return frame
+
+
 def get_random_leo_elements(rng, alt_min=400.0, alt_max=600.0):
     """Generate random LEO Keplerian elements."""
     alt = rng.uniform(alt_min, alt_max)
@@ -13,7 +26,7 @@ def get_random_leo_elements(rng, alt_min=400.0, alt_max=600.0):
     m = rng.uniform(0.0, 360.0) * u.deg
     return (a, e, inc, raan, argp, m)
 
-def pursuit_evasion_scenario(n_interceptors=1, n_targets=1, seed=None):
+def pursuit_evasion_scenario(n_interceptors=1, n_targets=1, seed=None, maneuver_frame="ECI"):
     """
     Generate a pursuit-evasion scenario with agents in similar orbits.
     """
@@ -57,11 +70,12 @@ def pursuit_evasion_scenario(n_interceptors=1, n_targets=1, seed=None):
         "episode_length": 100,
         "start_time": "2025-01-01 00:00:00",
         "max_delta_v_kms": 0.02,
+        "maneuver_frame": _normalize_maneuver_frame(maneuver_frame),
     }
     
     return agent_configs, env_config
 
-def constellation_scenario(n_agents=4, seed=None):
+def constellation_scenario(n_agents=4, seed=None, maneuver_frame="ECI"):
     """
     Generate a constellation of agents spread around the same orbital plane.
     """
@@ -86,6 +100,7 @@ def constellation_scenario(n_agents=4, seed=None):
         "episode_length": 100,
         "start_time": "2025-01-01 00:00:00",
         "max_delta_v_kms": 0.01,
+        "maneuver_frame": _normalize_maneuver_frame(maneuver_frame),
     }
     
     return agent_configs, env_config
