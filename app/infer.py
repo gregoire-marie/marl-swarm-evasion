@@ -40,6 +40,8 @@ def env_creator(config):
         env_config["timestep_sec"] = config["timestep_sec"]
     if "episode_length" in config:
         env_config["episode_length"] = config["episode_length"]
+    if "freeze_targets" in config:
+        env_config["freeze_targets"] = config["freeze_targets"]
     if "maneuver_frame" in config:
         env_config["maneuver_frame"] = str(config["maneuver_frame"]).upper()
         
@@ -53,6 +55,11 @@ def parse_args():
     parser.add_argument("--n-targets", type=int, default=1, help="Number of target agents.")
     parser.add_argument("--timestep", type=float, default=60.0, help="Simulation timestep in seconds.")
     parser.add_argument("--episode-length", type=int, default=100, help="Number of steps per episode.")
+    parser.add_argument(
+        "--freeze-targets",
+        action="store_true",
+        help="Force target agents to apply zero delta-v at each step.",
+    )
     parser.add_argument(
         "--maneuver-frame",
         type=parse_maneuver_frame,
@@ -83,6 +90,7 @@ def main():
         "n_targets": args.n_targets,
         "timestep_sec": args.timestep,
         "episode_length": args.episode_length,
+        "freeze_targets": args.freeze_targets,
         "maneuver_frame": args.maneuver_frame,
         "seed": args.seed
     }
@@ -95,6 +103,7 @@ def main():
     )
     scenario_env_config["timestep_sec"] = args.timestep
     scenario_env_config["episode_length"] = args.episode_length
+    scenario_env_config["freeze_targets"] = args.freeze_targets
     scenario_env_config["maneuver_frame"] = args.maneuver_frame
     
     env = OrbitalEnv(agent_configs, scenario_env_config)
@@ -149,12 +158,13 @@ def main():
             else:
                 logger.warning(f"Could not find actions in module output for {agent_id}. Keys: {output.keys()}")
                 action = np.zeros(3) # Fallback
-            
+
             actions[agent_id] = action
             history["actions"][agent_id].append(action)
-            
+
         observations, rewards, terminations, truncations, step_infos = env.step(actions)
-        
+        print(actions, observations)
+
         # Record data
         history["time"].append(step * args.timestep)
         for agent_id in env.agents:
