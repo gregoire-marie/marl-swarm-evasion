@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Tuple
 
+import numpy as np
 from astropy import units as u
 from astropy.units import Quantity
 from astropy.time import Time
@@ -18,6 +19,8 @@ from poliastro.twobody.angles import (
 from src.main.python.utils.helpers import get_logger
 
 log = get_logger("OrbitState")
+
+SUPPORTED_MANEUVER_FRAMES = {"ECI", "TNW"}
 
 
 class OrbitState:
@@ -48,6 +51,73 @@ class OrbitState:
         """
         self.epoch: Time = epoch
         self.orbit: Orbit = self._build_orbit_from_elements(elements, epoch)
+
+    @staticmethod
+    def _normalize_maneuver_frame(maneuver_frame: str) -> str:
+        frame = str(maneuver_frame).strip().upper()
+        if frame not in SUPPORTED_MANEUVER_FRAMES:
+            raise ValueError(
+                f"Unsupported maneuver frame '{maneuver_frame}'. "
+                f"Supported frames: {sorted(SUPPORTED_MANEUVER_FRAMES)}."
+            )
+        return frame
+
+    def _get_tnw_basis_matrix(self) -> np.ndarray:
+        """
+        Return the TNW basis expressed in ECI components.
+
+        Columns are unit vectors [T, N, W] expressed in ECI.
+        """
+        r, v = self.orbit.rv()
+        r_km = r.to_value(u.km)
+        v_kms = v.to_value(u.km / u.s)
+
+        v_norm = np.linalg.norm(v_kms)
+        if v_norm == 0.0:
+            raise ValueError("Cannot build TNW frame with zero velocity norm.")
+
+        h_vec = np.cross(r_km, v_kms)
+        h_norm = np.linalg.norm(h_vec)
+        if h_norm == 0.0:
+            raise ValueError("Cannot build TNW frame with zero angular-momentum norm.")
+
+        t_hat = v_kms / v_norm
+        w_hat = h_vec / h_norm
+        n_hat = np.cross(w_hat, t_hat)
+        n_norm = np.linalg.norm(n_hat)
+        if n_norm == 0.0:
+            raise ValueError("Cannot build TNW frame with degenerate basis.")
+        n_hat = n_hat / n_norm
+
+        # Re-orthogonalize W after N normalization to reduce numerical drift.
+        w_hat = np.cross(t_hat, n_hat)
+        w_hat = w_hat / np.linalg.norm(w_hat)
+
+        return np.column_stack((t_hat, n_hat, w_hat))
+
+    def tnw_to_eci(self, dv_vector_tnw: Quantity) -> Quantity:
+        """
+        Convert a TNW-frame vector to ECI components at current epoch.
+        """
+        dv_tnw_kms = np.asarray(dv_vector_tnw.to_value(u.km / u.s), dtype=float)
+        if dv_tnw_kms.shape != (3,):
+            raise ValueError(f"TNW vector must have shape (3,), got {dv_tnw_kms.shape}.")
+
+        basis = self._get_tnw_basis_matrix()
+        dv_eci_kms = basis @ dv_tnw_kms
+        return dv_eci_kms * u.km / u.s
+
+    def eci_to_tnw(self, dv_vector_eci: Quantity) -> Quantity:
+        """
+        Convert an ECI-frame vector to TNW components at current epoch.
+        """
+        dv_eci_kms = np.asarray(dv_vector_eci.to_value(u.km / u.s), dtype=float)
+        if dv_eci_kms.shape != (3,):
+            raise ValueError(f"ECI vector must have shape (3,), got {dv_eci_kms.shape}.")
+
+        basis = self._get_tnw_basis_matrix()
+        dv_tnw_kms = basis.T @ dv_eci_kms
+        return dv_tnw_kms * u.km / u.s
 
     def _build_orbit_from_elements(self, elements, epoch: Time) -> Orbit:
         """
@@ -90,13 +160,14 @@ class OrbitState:
         self.orbit = self.orbit.propagate(tof)
         self.epoch = new_epoch
 
-    def apply_delta_v(self, dv_vector: Quantity, time: Time) -> None:
+    def apply_delta_v(self, dv_vector: Quantity, time: Time, maneuver_frame: str = "ECI") -> None:
         """
         Apply an instantaneous delta-v at a given epoch.
 
         Args:
-            dv_vector (Quantity[km/s]): 3D delta-v vector in ECI frame.
+            dv_vector (Quantity[km/s]): 3D delta-v vector in maneuver frame.
             time (Time): Time at which the delta-v is applied.
+            maneuver_frame (str): Local frame for dv_vector, "ECI" or "TNW".
 
         Returns:
             None
@@ -104,8 +175,25 @@ class OrbitState:
         if time != self.epoch:
             self.propagate_to(time)
 
+        frame = self._normalize_maneuver_frame(maneuver_frame)
+        if hasattr(dv_vector, "to"):
+            dv_input = dv_vector.to(u.km / u.s)
+        else:
+            dv_input = np.asarray(dv_vector, dtype=float) * u.km / u.s
+        dv_values = np.asarray(dv_input.to_value(u.km / u.s), dtype=float)
+        if dv_values.shape != (3,):
+            raise ValueError(
+                f"Delta-v vector must have shape (3,) in {frame} frame, got {dv_values.shape}."
+            )
+        dv_input = dv_values * u.km / u.s
+
+        if frame == "TNW":
+            dv_eci = self.tnw_to_eci(dv_input)
+        else:
+            dv_eci = dv_input
+
         r, v = self.orbit.rv()
-        v_new = v + dv_vector
+        v_new = v + dv_eci
 
         self.orbit = Orbit.from_vectors(Earth, r, v_new, epoch=time)
         self.epoch = time
@@ -140,4 +228,3 @@ class OrbitState:
         E = nu_to_E(nu, e_q)
         M = E_to_M(E, e_q).to(u.deg)
         return a, e, inc, raan, argp, M
-
