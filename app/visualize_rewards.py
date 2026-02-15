@@ -193,5 +193,5 @@ def main(version):
 
 if __name__ == "__main__":
     args = parse_args()
-    main("v1")
+    # main("v1")
     main("v2")
