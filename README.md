@@ -31,11 +31,14 @@ Maneuvers are supported in both the inertial `ECI` frame and the local `TNW` fra
    ```
 2. **Run training (PPO)**:
    ```bash
-   # Simple run (1 interceptor, 1 target)
-   make train
-
    # Advanced run with custom parameters
    uv run python app/train.py --n-interceptors 3 --n-targets 1 --iterations 100 --num-workers 4 --maneuver-frame TNW
+   ```
+   
+3. **Run inference**:
+   ```bash
+   # Advanced run with custom parameters
+   uv run python app/infer.py --n-interceptors 3 --n-targets 1 --episode-length 100 --num-workers 4 --maneuver-frame TNW
    ```
 
 ## Testing
