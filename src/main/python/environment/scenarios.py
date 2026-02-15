@@ -56,7 +56,7 @@ def pursuit_evasion_scenario(n_interceptors=1, n_targets=1, seed=None):
         "timestep_sec": 60.0,
         "episode_length": 100,
         "start_time": "2025-01-01 00:00:00",
-        "max_delta_v_kms": 0.01,
+        "max_delta_v_kms": 0.02,
     }
     
     return agent_configs, env_config
