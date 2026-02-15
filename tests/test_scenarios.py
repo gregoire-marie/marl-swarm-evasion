@@ -24,6 +24,7 @@ def test_pursuit_evasion_scenario():
     assert agent_configs["interceptor_0"]["role"] == "interceptor"
     assert agent_configs["target_0"]["role"] == "target"
     assert env_config["timestep_sec"] == 60.0
+    assert env_config["maneuver_frame"] == "ECI"
 
 def test_constellation_scenario():
     agent_configs, env_config = constellation_scenario(n_agents=4, seed=123)
@@ -32,3 +33,25 @@ def test_constellation_scenario():
     assert roles.count("interceptor") == 2
     assert roles.count("target") == 2
     assert env_config["episode_length"] == 100
+    assert env_config["maneuver_frame"] == "ECI"
+
+
+def test_scenarios_accept_tnw_frame():
+    _, pe_env = pursuit_evasion_scenario(
+        n_interceptors=1,
+        n_targets=1,
+        seed=1,
+        maneuver_frame="tnw",
+    )
+    _, const_env = constellation_scenario(n_agents=2, seed=2, maneuver_frame="TNW")
+
+    assert pe_env["maneuver_frame"] == "TNW"
+    assert const_env["maneuver_frame"] == "TNW"
+
+
+def test_scenarios_reject_invalid_maneuver_frame():
+    with pytest.raises(ValueError):
+        pursuit_evasion_scenario(maneuver_frame="BAD_FRAME")
+
+    with pytest.raises(ValueError):
+        constellation_scenario(maneuver_frame="X")

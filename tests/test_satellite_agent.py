@@ -80,6 +80,71 @@ def test_propagation_and_action():
     assert np.isclose(dv_total, expected_dv, rtol=1e-6)
 
 
+def test_action_in_tnw_frame():
+    epoch = Time("2025-01-01 00:00:00", scale="utc")
+    config = {
+        "role": "interceptor",
+        "init_orbit": get_sample_elements(),
+        "init_delta_v": 10.0,
+    }
+    agent = SatelliteAgent("agent_tnw", config, epoch)
+
+    burn_time = epoch + TimeDelta(90.0, format="sec")
+    agent.propagate_to(burn_time)
+    _, v_before = agent.orbit_state.get_rv()
+
+    dv_tnw = np.array([0.006, -0.002, 0.001], dtype=np.float32)
+    dv_eci_expected = agent.orbit_state.tnw_to_eci(dv_tnw * u.km / u.s)
+
+    agent.apply_action(dv_tnw, burn_time, maneuver_frame="TNW")
+    _, v_after = agent.orbit_state.get_rv()
+
+    dv_measured = (v_after - v_before).to_value(u.km / u.s)
+    assert np.allclose(dv_measured, dv_eci_expected.to_value(u.km / u.s), atol=1e-8)
+
+    used_dv = agent.get_used_delta_v().to_value(u.km / u.s)
+    assert np.isclose(used_dv, np.linalg.norm(dv_tnw), rtol=1e-6)
+
+
+def test_action_in_tnw_frame_accepts_quantity_input():
+    epoch = Time("2025-01-01 00:00:00", scale="utc")
+    config = {
+        "role": "interceptor",
+        "init_orbit": get_sample_elements(),
+        "init_delta_v": 10.0,
+    }
+    agent = SatelliteAgent("agent_tnw_qty", config, epoch)
+
+    burn_time = epoch + TimeDelta(120.0, format="sec")
+    agent.propagate_to(burn_time)
+    _, v_before = agent.orbit_state.get_rv()
+
+    dv_tnw = np.array([0.004, 0.001, -0.002]) * u.km / u.s
+    dv_eci_expected = agent.orbit_state.tnw_to_eci(dv_tnw)
+
+    agent.apply_action(dv_tnw, burn_time, maneuver_frame="TNW")
+    _, v_after = agent.orbit_state.get_rv()
+
+    dv_measured = (v_after - v_before).to_value(u.km / u.s)
+    assert np.allclose(dv_measured, dv_eci_expected.to_value(u.km / u.s), atol=1e-8)
+
+
+def test_action_rejects_invalid_shape():
+    epoch = Time("2025-01-01 00:00:00", scale="utc")
+    config = {
+        "role": "interceptor",
+        "init_orbit": get_sample_elements(),
+        "init_delta_v": 10.0,
+    }
+    agent = SatelliteAgent("agent_bad_shape", config, epoch)
+
+    with np.testing.assert_raises(ValueError):
+        agent.apply_action(np.array([0.01, 0.0], dtype=np.float32), epoch, maneuver_frame="ECI")
+
+    with np.testing.assert_raises(ValueError):
+        agent.apply_action(np.array([0.01, 0.0], dtype=np.float32), epoch, maneuver_frame="TNW")
+
+
 def test_observation_vector():
     epoch = Time("2025-01-01 00:00:00", scale="utc")
 

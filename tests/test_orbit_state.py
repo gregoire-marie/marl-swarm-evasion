@@ -102,6 +102,58 @@ def test_delta_v_application():
     assert np.isclose(delta_v_measured, expected_dv, rtol=1e-6)
 
 
+def test_tnw_conversion_roundtrip():
+    state = OrbitState(get_sample_elements(), ess_epoch)
+    maneuver_time = ess_epoch + TimeDelta(120.0, format="sec")
+    state.propagate_to(maneuver_time)
+
+    dv_tnw = np.array([0.01, -0.005, 0.002]) * u.km / u.s
+    dv_eci = state.tnw_to_eci(dv_tnw)
+    dv_tnw_back = state.eci_to_tnw(dv_eci)
+
+    assert np.allclose(
+        dv_tnw_back.to_value(u.km / u.s),
+        dv_tnw.to_value(u.km / u.s),
+        rtol=1e-9,
+        atol=1e-12,
+    )
+
+    # Rotation must preserve norm.
+    assert np.isclose(
+        np.linalg.norm(dv_eci.to_value(u.km / u.s)),
+        np.linalg.norm(dv_tnw.to_value(u.km / u.s)),
+        rtol=1e-9,
+    )
+
+
+def test_delta_v_application_in_tnw_frame():
+    state = OrbitState(get_sample_elements(), ess_epoch)
+    maneuver_time = ess_epoch + TimeDelta(30.0, format="sec")
+    state.propagate_to(maneuver_time)
+    _, v_before = state.get_rv()
+
+    dv_tnw = np.array([0.01, 0.0, 0.0]) * u.km / u.s
+    state.apply_delta_v(dv_tnw, maneuver_time, maneuver_frame="TNW")
+    _, v_after = state.get_rv()
+
+    speed_before = np.linalg.norm(v_before.to_value(u.km / u.s))
+    speed_after = np.linalg.norm(v_after.to_value(u.km / u.s))
+
+    assert np.isclose(speed_after - speed_before, 0.01, atol=1e-8)
+
+
+def test_delta_v_application_rejects_invalid_shape():
+    state = OrbitState(get_sample_elements(), ess_epoch)
+    maneuver_time = ess_epoch + TimeDelta(30.0, format="sec")
+
+    bad_shape_dv = np.array([0.01, 0.0]) * u.km / u.s
+    with np.testing.assert_raises(ValueError):
+        state.apply_delta_v(bad_shape_dv, maneuver_time, maneuver_frame="ECI")
+
+    with np.testing.assert_raises(ValueError):
+        state.apply_delta_v(bad_shape_dv, maneuver_time, maneuver_frame="TNW")
+
+
 def test_keplerian_output():
     original_elements = get_sample_elements()
     state = OrbitState(original_elements, ess_epoch)
