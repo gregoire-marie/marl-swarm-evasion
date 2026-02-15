@@ -26,11 +26,15 @@ Target satellites learn to evade a swarm of interceptor satellites dynamically l
 ### Run the app
 1. **Visualize rewards**:
    ```bash
-   python app/visualize_rewards.py
+   uv run python app/visualize_rewards.py
    ```
 2. **Run training (PPO)**:
    ```bash
+   # Simple run (1 interceptor, 1 target)
    make train
+
+   # Advanced run with custom parameters
+   uv run python app/train.py --n-interceptors 3 --n-targets 1 --iterations 100 --num-workers 4
    ```
 
 ## Testing
@@ -70,9 +74,124 @@ This project standardizes physical units, angles, and time across the codebase f
   - Use utils.random.set_global_seed(seed) or pass seed to env.reset(seed=...) to seed Python, NumPy, and PyTorch (if installed).
   - Tests and examples use fixed epochs and deterministic elements for reproducibility.
 
-## Learn to parametrize
+## Training
 
-Multiple modes and features are available and parameterizable. # TODO : detail the parameters
+The `app/train.py` script is the main entry point for training the agents.
+
+### Basic Usage
+
+```bash
+uv run python app/train.py [OPTIONS]
+```
+
+### Common Examples
+
+- **Small scale training**:
+  ```bash
+  uv run python app/train.py --n-interceptors 1 --n-targets 1 --iterations 50
+  ```
+- **Parallelized training**:
+  ```bash
+  uv run python app/train.py --n-interceptors 5 --n-targets 2 --num-workers 8 --batch-size 10000
+  ```
+- **Resume from a previous run**:
+  ```bash
+  uv run python app/train.py --resume --local-dir ~/results/marl-swarm-evasion/ray_results
+  ```
+
+### Command-line Arguments
+
+| Argument | Type | Default                                    | Description                                                                                                                                                              |
+| :--- | :--- |:-------------------------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Scenario** | |                                            |                                                                                                                                                                          |
+| `--n-interceptors` | int | 1                                          | Number of interceptor agents.                                                                                                                                            |
+| `--n-targets` | int | 1                                          | Number of target agents.                                                                                                                                                 |
+| `--timestep` | float | 60.0                                       | Simulation timestep in seconds.                                                                                                                                          |
+| `--episode-length` | int | 100                                        | Maximum number of steps per episode (any collision causes an early termination).                                                                                         |
+| **Training** | |                                            |                                                                                                                                                                          |
+| `--iterations` | int | 20                                         | Number of training iterations.                                                                                                                                           |
+| `--batch-size` | int | 4000                                       | Training batch size : number of environment timesteps (across all workers) before a weight update. Cause: at least `batch-size`/`episode-length` episodes are performed. |
+| `--lr` | float | 5e-5                                       | Learning rate.                                                                                                                                                           |
+| `--gamma` | float | 0.99                                       | Discount factor.                                                                                                                                                         |
+| `--seed` | int | 42                                         | Random seed.                                                                                                                                                             |
+| **Execution** | |                                            |                                                                                                                                                                          |
+| `--num-workers` | int | 1                                          | Number of rollout workers (parallel envs).                                                                                                                               |
+| `--num-gpus` | float | 0                                          | Number of GPUs (can be fractional).                                                                                                                                      |
+| `--checkpoint-freq`| int | 1                                          | Frequency of checkpointing.                                                                                                                                              |
+| `--resume` | flag | -                                          | Resume training from the last checkpoint.                                                                                                                                |
+| `--local-dir` | str | `~/results/marl-swarm-evasion/ray_results` | Directory for results and checkpoints.                                                                                                                                   |
+
+## Monitoring
+
+You can monitor the training progress in real-time using **TensorBoard**. This allows you to track not only the rewards but also domain-specific success metrics.
+
+### Launching TensorBoard
+
+Point TensorBoard to your results directory (default is `~/results/marl-swarm-evasion/ray_results`):
+
+```bash
+tensorboard --logdir ~/results/marl-swarm-evasion/ray_results
+```
+
+### Automatic Layout (Custom Scalars)
+
+The training script automatically configures a **"Custom Scalars"** dashboard in TensorBoard. When you open TensorBoard, look for the "Custom Scalars" tab at the top. This page is pre-configured to always display the most important orbital metrics in organized groups:
+
+*   **Success and Failures**: `intercept_success_rate` and `out_of_fuel_rate`.
+*   **Collisions**: `interceptors_collision_rate` and `targets_collision_rate`.
+*   **Episode Metrics**: Average steps per episode `episode_steps` (custom) and episode length `episode_len_mean` (default).
+*   **Training Performance**: Mean episode return.
+
+### Key Metrics to Watch
+
+In the TensorBoard dashboard, you will find several categories of metrics:
+
+1.  **Ray RLlib Standard Metrics**:
+    *   `ray/tune/env_runners/episode_return_mean`: Overall performance of all agents.
+    *   `ray/tune/info/learner/<policy_id>/learner_stats/policy_loss`: Training stability.
+
+2.  **Custom Orbital Metrics** (found under `ray/tune/env_runners/`):
+    *   `intercept_success_rate`: Percentage of episodes where an interceptor successfully reached a target.
+    *   `interceptors_collision_rate`: Rate of collisions between interceptors.
+    *   `targets_collision_rate`: Rate of collisions between targets.
+    *   `out_of_fuel_rate`: Percentage of episodes ending because agents ran out of Δv.
+    *   `episode_steps`: Average number of steps per episode (shorter episodes often indicate early collisions or successes).
+
+These metrics provide a direct view of whether your agents are actually learning the desired orbital behaviors or just maximizing rewards through unintended shortcuts.
+
+## Inference and Visualization
+
+After training your agents, you can run an inference session to visualize the orbital situation and agent behaviors.
+
+### Running Inference
+
+Use the `app/inference.py` script to load a checkpoint and run a single episode:
+
+```bash
+uv run python app/inference.py /path/to/checkpoint --n-interceptors 1 --n-targets 1 --episode-length 100
+```
+
+### Command-line Arguments (Inference)
+
+| Argument | Type | Default                 | Description |
+| :--- | :--- |:------------------------| :--- |
+| `checkpoint` | str | -                       | **Required**. Path to the RLlib checkpoint directory. |
+| `--n-interceptors` | int | 1                       | Number of interceptor agents. |
+| `--n-targets` | int | 1                       | Number of target agents. |
+| `--timestep` | float | 60.0                    | Simulation timestep in seconds. |
+| `--episode-length` | int | 100                     | Number of steps per episode. |
+| `--seed` | int | 42                      | Random seed for the scenario. |
+| `--out-dir` | str | `$checkpoint/inference` | Directory to save generated plots. |
+
+### Generated Plots
+
+The script produces several plots in the output directory:
+
+1.  **`trajectories_3d.png`**: A 3D view of the orbital trajectories for all agents, with Earth for reference.
+2.  **`metrics_over_time.png`**: Time-series of rewards, remaining fuel (Δv), and action magnitudes for each agent.
+3.  **`distances.png`**: Relative distances between all pairs of agents over time (log scale), with the collision threshold highlighted.
+
+## Learn to parametrize
 
 ### Observation space
 
@@ -112,6 +231,7 @@ marl-swarm-evasion/
 │
 ├── app/                            # Entry points and scripts
 │   ├── train.py                    # RLlib training script (PPO)
+│   ├── inference.py                # Inference and visualization script
 │   └── visualize_rewards.py        # Reward shaping visualization tool
 │
 ├── docs/                           # Documentation and diagrams

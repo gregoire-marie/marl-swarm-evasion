@@ -29,8 +29,8 @@ def pursuit_evasion_scenario(n_interceptors=1, n_targets=1, seed=None):
         agent_id = f"interceptor_{i}"
         # Small perturbations from base orbit
         elements = list(base_elements)
-        elements[3] += rng.uniform(-1.0, 1.0) * u.deg  # RAAN perturbation
-        elements[5] += rng.uniform(-1.0, 1.0) * u.deg  # Mean anomaly perturbation
+        elements[3] = elements[3] + rng.uniform(-1.0, 1.0) * u.deg  # RAAN perturbation
+        elements[5] = elements[5] + rng.uniform(-1.0, 1.0) * u.deg  # Mean anomaly perturbation
         
         agent_configs[agent_id] = {
             "role": "interceptor",
@@ -43,8 +43,8 @@ def pursuit_evasion_scenario(n_interceptors=1, n_targets=1, seed=None):
         agent_id = f"target_{i}"
         # Small perturbations from base orbit
         elements = list(base_elements)
-        elements[3] += rng.uniform(-1.0, 1.0) * u.deg
-        elements[5] += rng.uniform(-1.0, 1.0) * u.deg
+        elements[3] = elements[3] + rng.uniform(-1.0, 1.0) * u.deg
+        elements[5] = elements[5] + rng.uniform(-1.0, 1.0) * u.deg
         
         agent_configs[agent_id] = {
             "role": "target",

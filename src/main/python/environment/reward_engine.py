@@ -13,7 +13,7 @@ from typing import Callable
 def objective_d_shaping_generator(objective: float, w: float):
     """Smoothly increase reward as value exceeds obj, saturates at large values."""
     def fn(x):
-        r = (objective / w) * (np.log(x) / np.log(objective + 1e-6) - 1)
+        r = (objective / w) * (np.log(x + 1e-6) / np.log(objective + 1e-6) - 1)
         return float(np.tanh(r))  # Tanh prevents exploding gradient
     return fn
 
