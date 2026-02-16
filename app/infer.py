@@ -9,9 +9,11 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.tune.registry import register_env
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
 
+from main.python.utils.constants import R_EARTH
 from src.main.python.environment.orbital_env import OrbitalEnv
 from src.main.python.environment.scenarios import pursuit_evasion_scenario
 from src.main.python.utils.helpers import get_logger
+from astropy import units as u
 
 logger = get_logger("inference_app")
 SUPPORTED_MANEUVER_FRAMES = ("ECI", "TNW")
@@ -221,7 +223,7 @@ def main():
 
     # Plot Earth for reference
     u_sphere, v_sphere = np.mgrid[0:2*np.pi:20j, 0:np.pi:10j]
-    R_earth = 6378.137
+    R_earth = float(R_EARTH / (1 * u.km))
     x_earth = R_earth * np.cos(u_sphere) * np.sin(v_sphere)
     y_earth = R_earth * np.sin(u_sphere) * np.sin(v_sphere)
     z_earth = R_earth * np.cos(v_sphere)

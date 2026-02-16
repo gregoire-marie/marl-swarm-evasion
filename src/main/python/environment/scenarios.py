@@ -2,6 +2,8 @@ import numpy as np
 from astropy import units as u
 from astropy.time import Time
 
+from main.python.utils.constants import R_EARTH
+
 SUPPORTED_MANEUVER_FRAMES = {"ECI", "TNW"}
 
 
@@ -18,7 +20,7 @@ def _normalize_maneuver_frame(maneuver_frame: str) -> str:
 def get_random_leo_elements(rng, alt_min=400.0, alt_max=600.0):
     """Generate random LEO Keplerian elements."""
     alt = rng.uniform(alt_min, alt_max)
-    a = (6378.137 + alt) * u.km
+    a = R_EARTH + alt * u.km
     e = rng.uniform(0.0, 0.001) * u.one
     inc = rng.uniform(0.0, 98.0) * u.deg
     raan = rng.uniform(0.0, 360.0) * u.deg
