@@ -81,6 +81,7 @@ def parse_args():
     train_group.add_argument("--batch-size", type=int, default=4000, help="Training batch size.")
     train_group.add_argument("--lr", type=float, default=5e-5, help="Learning rate.")
     train_group.add_argument("--gamma", type=float, default=0.99, help="Discount factor.")
+    train_group.add_argument("--num-epochs", type=int, default=10, help="Number of SGD epochs per training batch.")
     train_group.add_argument("--seed", type=int, default=42, help="Random seed.")
     
     # Execution arguments
@@ -162,7 +163,7 @@ def main():
             train_batch_size=args.batch_size,
             lr=args.lr,
             gamma=args.gamma,
-            num_epochs=10,
+            num_epochs=args.num_epochs,
             model={"fcnet_hiddens": [256, 256]}
         )
         .multi_agent(

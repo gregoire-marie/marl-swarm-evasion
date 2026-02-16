@@ -97,7 +97,7 @@ uv run python app/train.py [OPTIONS]
   ```
 - **Fully parametrized training**:
   ```bash
-  uv run python app/train.py --name ppo_small_1v1 --n-interceptors 1 --n-targets 1 --freeze-targets --maneuver-frame tnw --timestep 60.0 --episode-length 100 --iterations 20 --batch-size 1000 --lr 0.0001 --gamma 0.99 --seed 42 --num-workers 8 --checkpoint-freq 10 --local-dir "~/results/marl-swarm-evasion/ray_results"
+  uv run python app/train.py --name ppo_small_1v1 --n-interceptors 1 --n-targets 1 --freeze-targets --maneuver-frame tnw --timestep 60.0 --episode-length 100 --iterations 20 --batch-size 1000 --lr 0.0001 --gamma 0.99 --num-epochs 10 --seed 42 --num-workers 8 --checkpoint-freq 10 --local-dir "~/results/marl-swarm-evasion/ray_results"
   ```
 - **Train with TNW maneuvers**:
   ```bash
@@ -124,6 +124,7 @@ uv run python app/train.py [OPTIONS]
 | `--batch-size` | int | 4000                                       | Training batch size : number of environment timesteps (across all workers) before a weight update. Cause: at least `batch-size`/`episode-length` episodes are performed. |
 | `--lr` | float | 5e-5                                       | Learning rate.                                                                                                                                                           |
 | `--gamma` | float | 0.99                                       | Discount factor.                                                                                                                                                         |
+| `--num-epochs` | int | 10                                         | Number of SGD epochs applied to each training batch (`num_epochs` in RLlib PPO).                                                                                       |
 | `--seed` | int | 42                                         | Random seed.                                                                                                                                                             |
 | **Execution** | |                                            |                                                                                                                                                                          |
 | `--num-workers` | int | 1                                          | Number of rollout workers (parallel envs).                                                                                                                               |
