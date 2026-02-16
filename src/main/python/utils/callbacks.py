@@ -69,7 +69,9 @@ class OrbitalPhysicsCallbacks(DefaultCallbacks):
             metrics["targets_collision_rate"] = float(flags["targets_coll"])
         if "no_fuel" in flags:
             metrics["out_of_fuel_rate"] = float(flags["no_fuel"])
-        
+        if "reentry" in flags:
+            metrics["reentry_rate"] = float(flags["reentry"])
+
         metrics["episode_steps"] = float(episode_steps)
 
         # Log metrics using the appropriate method
