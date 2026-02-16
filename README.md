@@ -145,9 +145,9 @@ Point TensorBoard to your results directory (default is `~/results/marl-swarm-ev
 tensorboard --logdir ~/results/marl-swarm-evasion/ray_results
 ```
 
-### Automatic Layout (Custom Scalars)
+### Dashboard Layout
 
-The training script automatically configures a **"Custom Scalars"** dashboard in TensorBoard. When you open TensorBoard, look for the "Custom Scalars" tab at the top. This page is pre-configured to always display the most important orbital metrics in organized groups:
+Use this page to track the most important metrics:
 
 *   **Success and Failures**: `intercept_success_rate` and `out_of_fuel_rate`.
 *   **Collisions**: `interceptors_collision_rate` and `targets_collision_rate`.
@@ -158,7 +158,7 @@ The training script automatically configures a **"Custom Scalars"** dashboard in
 
 In the TensorBoard dashboard, you will find several categories of metrics:
 
-1.  **Ray RLlib Standard Metrics**:
+1.  **Default Ray RLlib Metrics**:
     *   `ray/tune/env_runners/episode_return_mean`: Overall performance of all agents.
     *   `ray/tune/info/learner/<policy_id>/learner_stats/policy_loss`: Training stability.
 
@@ -167,6 +167,7 @@ In the TensorBoard dashboard, you will find several categories of metrics:
     *   `interceptors_collision_rate`: Rate of collisions between interceptors.
     *   `targets_collision_rate`: Rate of collisions between targets.
     *   `out_of_fuel_rate`: Percentage of episodes ending because agents ran out of Δv.
+    *   `reentry_rate`: Percentage of episodes ending because agents reentered the atmosphere.
     *   `episode_steps`: Average number of steps per episode (shorter episodes often indicate early collisions or successes).
 
 These metrics provide a direct view of whether your agents are actually learning the desired orbital behaviors or just maximizing rewards through unintended shortcuts.
