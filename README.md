@@ -176,10 +176,10 @@ After training your agents, you can run an inference session to visualize the or
 
 ### Running Inference
 
-Use the `app/inference.py` script to load a checkpoint and run a single episode:
+Use the `app/infer.py` script to load a checkpoint and run a single episode:
 
 ```bash
-uv run python app/inference.py /path/to/checkpoint --n-interceptors 1 --n-targets 1 --episode-length 100 --maneuver-frame tnw
+uv run python app/infer.py checkpoint --n-interceptors 1 --n-targets 1 --episode-length 100 --maneuver-frame tnw
 ```
 
 ### Command-line Arguments (Inference)
@@ -243,7 +243,7 @@ marl-swarm-evasion/
 │
 ├── app/                            # Entry points and scripts
 │   ├── train.py                    # RLlib training script (PPO)
-│   ├── inference.py                # Inference and visualization script
+│   ├── infer.py                # Inference and visualization script
 │   └── visualize_rewards.py        # Reward shaping visualization tool
 │
 ├── docs/                           # Documentation and diagrams
