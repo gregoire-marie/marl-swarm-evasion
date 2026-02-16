@@ -4,6 +4,7 @@ from poliastro.bodies import Earth
 from poliastro.twobody.orbit import Orbit
 from poliastro.twobody.angles import E_to_nu, M_to_E
 import numpy as np
+from src.main.python.utils.constants import R_EARTH
 
 def compute_instantaneous_delta_v(
     elements_a, elements_b, M_burn, epoch=Time("2025-01-01 00:00:00", scale="utc")
@@ -74,3 +75,9 @@ def compute_eci_distance(state_a, state_b):
     r1, _ = state_a.get_rv()
     r2, _ = state_b.get_rv()
     return np.linalg.norm((r1 - r2).to_value(u.km))
+
+
+def compute_altitude_km(state) -> float:
+    r, _ = state.get_rv()
+    radius_km = np.linalg.norm(r.to_value(u.km))
+    return float(radius_km - R_EARTH.to_value(u.km))

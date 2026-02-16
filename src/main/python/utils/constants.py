@@ -6,6 +6,7 @@ DEFAULT_OBJECTIVES = {
     "avoid_distance_km": 10.0,           # Minimal spacing for targets to keep with interceptors (km)
     "same_role_spacing_km": 10.0,        # Minimal spacing to keep between agents with the same role (km)
     "minimal_delta_v_kms": 0.01e-3,      # Minimal delta-v to consider fuel depleted in an agent (km/s)
+    "reentry_altitude_km": 120,          # Altitude at which a satellite is considered reentered in the atmosphere (km)
 }
 
 # -- Rewards --
