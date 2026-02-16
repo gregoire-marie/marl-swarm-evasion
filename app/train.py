@@ -32,21 +32,19 @@ def env_creator(config):
     """
     Creates and wraps the orbital environment for RLlib.
     """
-    agent_configs, env_config = pursuit_evasion_scenario(
+    agent_configs = pursuit_evasion_scenario(
         n_interceptors=config.get("n_interceptors", 1),
         n_targets=config.get("n_targets", 1),
         seed=config.get("seed", 42)
     )
-    
-    # Merge overrides from config
-    if "timestep_sec" in config:
-        env_config["timestep_sec"] = config["timestep_sec"]
-    if "episode_length" in config:
-        env_config["episode_length"] = config["episode_length"]
-    if "freeze_targets" in config:
-        env_config["freeze_targets"] = config["freeze_targets"]
-    if "maneuver_frame" in config:
-        env_config["maneuver_frame"] = str(config["maneuver_frame"]).upper()
+    env_config = {
+        "timestep_sec": config.get("timestep_sec", 60.0),
+        "episode_length": config.get("episode_length", 100),
+        "start_time": config.get("start_time", "2025-01-01 00:00:00"),
+        "max_delta_v_kms": config.get("max_delta_v_kms", 0.02),
+        "freeze_targets": bool(config.get("freeze_targets", False)),
+        "maneuver_frame": str(config.get("maneuver_frame", "ECI")).upper(),
+    }
         
     env = OrbitalEnv(agent_configs, env_config)
     return ParallelPettingZooEnv(env)
