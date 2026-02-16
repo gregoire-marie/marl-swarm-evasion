@@ -32,7 +32,7 @@ Maneuvers are supported in both the inertial `ECI` frame and the local `TNW` fra
 2. **Run training (PPO)**:
    ```bash
    # Train with custom parameters
-   uv run python app/train.py --n-interceptors 3 --n-targets 1 --iterations 100 --num-workers 4 --maneuver-frame TNW
+   uv run python app/train.py --name ppo_3i_1t_tnw --n-interceptors 3 --n-targets 1 --iterations 100 --num-workers 4 --maneuver-frame TNW
    ```
    
 3. **Run inference**:
@@ -93,19 +93,19 @@ uv run python app/train.py [OPTIONS]
 
 - **Small scale training**:
   ```bash
-  uv run python app/train.py --n-interceptors 1 --n-targets 1 --iterations 50
+  uv run python app/train.py --name ppo_small_1v1 --n-interceptors 1 --n-targets 1 --freeze-targets
   ```
-- **Parallelized training**:
+- **Fully parametrized training**:
   ```bash
-  uv run python app/train.py --n-interceptors 5 --n-targets 2 --num-workers 8 --batch-size 10000
+  uv run python app/train.py --name ppo_small_1v1 --n-interceptors 1 --n-targets 1 --freeze-targets --maneuver-frame tnw --timestep 60.0 --episode-length 100 --iterations 20 --batch-size 1000 --lr 0.0001 --gamma 0.99 --seed 42 --num-workers 8 --checkpoint-freq 10 --local-dir "~/results/marl-swarm-evasion/ray_results"
   ```
 - **Train with TNW maneuvers**:
   ```bash
-  uv run python app/train.py --n-interceptors 2 --n-targets 1 --maneuver-frame tnw
+  uv run python app/train.py --name ppo_tnw_2v1 --n-interceptors 2 --n-targets 1 --maneuver-frame tnw
   ```
 - **Resume from a previous run**:
   ```bash
-  uv run python app/train.py --resume --local-dir ~/results/marl-swarm-evasion/ray_results
+  uv run python app/train.py --resume --name ppo_tnw_2v1 --local-dir ~/results/marl-swarm-evasion/ray_results
   ```
 
 ### Command-line Arguments
@@ -130,6 +130,7 @@ uv run python app/train.py [OPTIONS]
 | `--num-gpus` | float | 0                                          | Number of GPUs (can be fractional).                                                                                                                                      |
 | `--checkpoint-freq`| int | 1                                          | Frequency of checkpointing.                                                                                                                                              |
 | `--resume` | flag | -                                          | Resume training from the last checkpoint.                                                                                                                                |
+| `--name` | str | -                                          | Name of the experiment (used as the results subdirectory).                                                                                                              |
 | `--local-dir` | str | `~/results/marl-swarm-evasion/ray_results` | Directory for results and checkpoints.                                                                                                                                   |
 
 ## Monitoring
