@@ -150,6 +150,7 @@ def main():
             else:
                 logger.warning(f"Could not find actions in module output for {agent_id}. Keys: {output.keys()}")
                 action = np.zeros(3) # Fallback
+            policy_id = policy_mapping_fn(agent_id)
 
             actions[agent_id] = action
             history["actions"][agent_id].append(action)

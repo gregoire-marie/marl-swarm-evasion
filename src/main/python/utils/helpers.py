@@ -38,7 +38,19 @@ def get_logger(name="orbital", level=logging.INFO):
 # Optional: example global logger
 log = get_logger("main_logger")
 
-# ========== Other Helpers ==========
+# ========== RL Helpers ==========
+
+def policy_mapping_fn(agent_id: str) -> str:
+    """
+    Maps agent IDs to policies.
+    """
+    if agent_id.startswith("interceptor"):
+        return "interceptor_policy"
+    elif agent_id.startswith("target"):
+        return "target_policy"
+    return "shared_policy"
+
+# ========== Technical Helpers ==========
 
 def unwrap_angle(angle_rad):
     """

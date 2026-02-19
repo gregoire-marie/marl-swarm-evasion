@@ -9,7 +9,7 @@ from ray.tune.registry import register_env
 
 from src.main.python.environment.orbital_env import OrbitalEnv
 from src.main.python.environment.scenarios import pursuit_evasion_scenario
-from src.main.python.utils.helpers import get_logger
+from src.main.python.utils.helpers import get_logger, policy_mapping_fn
 from src.main.python.utils.callbacks import OrbitalPhysicsCallbacks
 
 # Initialize logger
@@ -93,15 +93,6 @@ def parse_args():
     
     return parser.parse_args()
 
-def policy_mapping_fn(agent_id, *args, **kwargs):
-    """
-    Maps agent IDs to policies.
-    """
-    if agent_id.startswith("interceptor"):
-        return "interceptor_policy"
-    elif agent_id.startswith("target"):
-        return "target_policy"
-    return "shared_policy"
 
 def main():
     args = parse_args()
