@@ -1,4 +1,7 @@
 import logging
+import os
+import re
+
 import numpy as np
 from astropy import units as u
 from astropy.coordinates import CartesianRepresentation
@@ -37,6 +40,80 @@ def get_logger(name="orbital", level=logging.INFO):
 
 # Optional: example global logger
 log = get_logger("main_logger")
+
+# ========== File Helpers ==========
+
+def resolve_checkpoint_path(path: str) -> str:
+    """
+    Resolves a user-supplied checkpoint reference into a concrete RLlib checkpoint directory.
+
+    This helper accepts either:
+    - a specific RLlib checkpoint directory (e.g., ``.../checkpoint_000123``), or
+    - a trial/run directory that contains multiple ``checkpoint_*`` subdirectories.
+
+    The input path is expanded (``~``), converted to an absolute path, and normalized. If the
+    resolved directory already looks like an RLlib checkpoint (e.g., contains checkpoint
+    metadata/state files), it is returned as-is. Otherwise, the directory is treated as a
+    trial directory and the most recent checkpoint is selected by the numeric suffix of
+    ``checkpoint_*`` (highest value wins).
+
+    Args:
+        path: Filesystem path to an RLlib checkpoint directory or to a trial directory
+            containing ``checkpoint_*`` subdirectories.
+
+    Returns:
+        Absolute, normalized path to the resolved RLlib checkpoint directory.
+
+    Raises:
+        FileNotFoundError: If the resolved path does not exist.
+        ValueError: If the path is not a directory, or if no RLlib checkpoint can be
+            identified under the provided directory.
+    """
+    CHECKPOINT_DIR_PATTERN = re.compile(r"^checkpoint_(\d+)$")
+
+    candidate_path = os.path.normpath(os.path.abspath(os.path.expanduser(path)))
+
+    if not os.path.exists(candidate_path):
+        raise FileNotFoundError(f"Checkpoint path does not exist: {candidate_path}")
+    if not os.path.isdir(candidate_path):
+        raise ValueError(f"Checkpoint path must be a directory: {candidate_path}")
+
+    if CHECKPOINT_DIR_PATTERN.fullmatch(os.path.basename(candidate_path)):
+        return candidate_path
+
+    entries = set(os.listdir(candidate_path))
+
+    # If this dir itself already contains checkpoint state files, accept it.
+    if (
+        "rllib_checkpoint.json" in entries
+        or any(
+            name.startswith("algorithm_state.")
+            and name.split(".")[-1] in {"pkl", "msgpack", "msgpck"}
+            for name in entries
+        )
+        or any(re.fullmatch(r"checkpoint-\d+", name) for name in entries)
+    ):
+        return candidate_path
+
+    # Otherwise, resolve a trial directory to its latest checkpoint_* subdirectory.
+    checkpoint_candidates = []
+    for name in entries:
+        match = CHECKPOINT_DIR_PATTERN.fullmatch(name)
+        if not match:
+            continue
+        checkpoint_dir = os.path.join(candidate_path, name)
+        if os.path.isdir(checkpoint_dir):
+            checkpoint_candidates.append((int(match.group(1)), checkpoint_dir))
+
+    if not checkpoint_candidates:
+        raise ValueError(
+            "No RLlib checkpoint found. Provide either a checkpoint directory "
+            f"(checkpoint_XXXXXX) or a trial directory containing checkpoint_* folders: {candidate_path}"
+        )
+
+    checkpoint_candidates.sort(key=lambda x: x[0], reverse=True)
+    resolved_path = checkpoint_candidates[0][1]
+    return resolved_path
 
 # ========== RL Helpers ==========
 

@@ -16,12 +16,11 @@ from ray.rllib.utils.spaces.space_utils import unsquash_action, clip_action
 from main.python.utils.constants import R_EARTH
 from src.main.python.environment.orbital_env import OrbitalEnv
 from src.main.python.environment.scenarios import pursuit_evasion_scenario
-from src.main.python.utils.helpers import get_logger, policy_mapping_fn
+from src.main.python.utils.helpers import get_logger, policy_mapping_fn, resolve_checkpoint_path
 from astropy import units as u
 
 logger = get_logger("inference_app")
 SUPPORTED_MANEUVER_FRAMES = ("ECI", "TNW")
-CHECKPOINT_DIR_PATTERN = re.compile(r"^checkpoint_(\d+)$")
 torch, _ = try_import_torch()
 
 
@@ -80,57 +79,6 @@ def parse_args():
     parser.add_argument("--out-dir", type=str, required=False, help="Directory to save plots.")
     return parser.parse_args()
 
-def resolve_checkpoint_path(path: str) -> str:
-    """
-    Resolve a checkpoint input to a concrete RLlib checkpoint directory.
-    """
-    candidate_path = os.path.normpath(os.path.abspath(os.path.expanduser(path)))
-
-    if not os.path.exists(candidate_path):
-        raise FileNotFoundError(f"Checkpoint path does not exist: {candidate_path}")
-    if not os.path.isdir(candidate_path):
-        raise ValueError(f"Checkpoint path must be a directory: {candidate_path}")
-
-    if CHECKPOINT_DIR_PATTERN.fullmatch(os.path.basename(candidate_path)):
-        return candidate_path
-
-    entries = set(os.listdir(candidate_path))
-
-    # If this dir itself already contains checkpoint state files, accept it.
-    if (
-        "rllib_checkpoint.json" in entries
-        or any(
-            name.startswith("algorithm_state.")
-            and name.split(".")[-1] in {"pkl", "msgpack", "msgpck"}
-            for name in entries
-        )
-        or any(re.fullmatch(r"checkpoint-\d+", name) for name in entries)
-    ):
-        return candidate_path
-
-    # Otherwise, resolve a trial directory to its latest checkpoint_* subdirectory.
-    checkpoint_candidates = []
-    for name in entries:
-        match = CHECKPOINT_DIR_PATTERN.fullmatch(name)
-        if not match:
-            continue
-        checkpoint_dir = os.path.join(candidate_path, name)
-        if os.path.isdir(checkpoint_dir):
-            checkpoint_candidates.append((int(match.group(1)), checkpoint_dir))
-
-    if not checkpoint_candidates:
-        raise ValueError(
-            "No RLlib checkpoint found. Provide either a checkpoint directory "
-            f"(checkpoint_XXXXXX) or a trial directory containing checkpoint_* folders: {candidate_path}"
-        )
-
-    checkpoint_candidates.sort(key=lambda x: x[0], reverse=True)
-    resolved_path = checkpoint_candidates[0][1]
-    logger.info(
-        f"Resolved trial directory to latest checkpoint: {resolved_path} "
-        f"(from input: {candidate_path})"
-    )
-    return resolved_path
 
 def compute_deterministic_action(algo: Algorithm, policy_id: str, obs: np.ndarray):
     """
