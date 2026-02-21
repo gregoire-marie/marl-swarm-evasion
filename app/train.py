@@ -1,10 +1,13 @@
 import os
 import argparse
 import logging
+from typing import Any, Dict
+
 import ray
 from ray import tune
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.policy.policy import PolicySpec
 from ray.tune.registry import register_env
 
 from src.main.python.environment.orbital_env import OrbitalEnv
@@ -28,26 +31,6 @@ def parse_maneuver_frame(value: str) -> str:
         )
     return frame
 
-def env_creator(config):
-    """
-    Creates and wraps the orbital environment for RLlib.
-    """
-    agent_configs = pursuit_evasion_scenario(
-        n_interceptors=config.get("n_interceptors", 1),
-        n_targets=config.get("n_targets", 1),
-        seed=config.get("seed", 42)
-    )
-    env_config = {
-        "timestep_sec": config.get("timestep_sec", 60.0),
-        "episode_length": config.get("episode_length", 100),
-        "start_time": config.get("start_time", "2025-01-01 00:00:00"),
-        "max_delta_v_kms": config.get("max_delta_v_kms", 0.02),
-        "freeze_targets": bool(config.get("freeze_targets", False)),
-        "maneuver_frame": str(config.get("maneuver_frame", "ECI")).upper(),
-    }
-        
-    env = OrbitalEnv(agent_configs, env_config)
-    return ParallelPettingZooEnv(env)
 
 def parse_args():
     """
@@ -93,110 +76,215 @@ def parse_args():
     
     return parser.parse_args()
 
+def _validate_args(args: argparse.Namespace) -> None:
+    if args.n_interceptors <= 0:
+        raise ValueError("--n-interceptors must be >= 1.")
+    if args.n_targets <= 0:
+        raise ValueError("--n-targets must be >= 1.")
+    if args.iterations <= 0:
+        raise ValueError("--iterations must be >= 1.")
+    if args.batch_size <= 0:
+        raise ValueError("--batch-size must be >= 1.")
+    if args.num_epochs <= 0:
+        raise ValueError("--num-epochs must be >= 1.")
+    if args.num_workers < 0:
+        raise ValueError("--num-workers must be >= 0.")
+    if args.num_gpus < 0:
+        raise ValueError("--num-gpus must be >= 0.")
+    if args.checkpoint_freq < 0:
+        raise ValueError("--checkpoint-freq must be >= 0.")
+
+
+def _build_experiment_name(args: argparse.Namespace) -> str:
+    if args.name:
+        return args.name
+    return f"ppo_{args.n_interceptors}i_{args.n_targets}t_{args.maneuver_frame.lower()}"
+
+
+def setup_training(args: argparse.Namespace) -> Dict[str, Any]:
+    """
+    Setup all that is needed for training.
+    """
+    _validate_args(args)
+
+    local_dir = os.path.abspath(os.path.expanduser(args.local_dir))
+    os.makedirs(local_dir, exist_ok=True)
+    experiment_name = _build_experiment_name(args)
+
+    agent_configs = pursuit_evasion_scenario(
+        n_interceptors=args.n_interceptors,
+        n_targets=args.n_targets,
+        seed=args.seed,
+    )
+    orbital_env_config = {
+        "timestep_sec": args.timestep,
+        "episode_length": args.episode_length,
+        "start_time": "2025-01-01 00:00:00",
+        "maneuver_frame": args.maneuver_frame,
+        "freeze_targets": args.freeze_targets,
+    }
+
+    env_name = OrbitalEnv.metadata.get("name", "orbital_env_v0")
+
+    def env_creator(config: Dict[str, Any]) -> ParallelPettingZooEnv:
+        agent_cfgs = pursuit_evasion_scenario(
+            n_interceptors=int(config["n_interceptors"]),
+            n_targets=int(config["n_targets"]),
+            seed=int(config["seed"]),
+        )
+        return ParallelPettingZooEnv(
+            OrbitalEnv(
+                agent_configs=agent_cfgs,
+                env_config=config["orbital_env_config"],
+            )
+        )
+
+    register_env(env_name, env_creator)
+
+    probe_env = OrbitalEnv(agent_configs=agent_configs, env_config=orbital_env_config)
+    interceptor_id = next((aid for aid, cfg in agent_configs.items() if cfg["role"] == "interceptor"), None)
+    target_id = next((aid for aid, cfg in agent_configs.items() if cfg["role"] == "target"), None)
+
+    policies: Dict[str, PolicySpec] = {}
+    interceptor_obs_space = None
+    target_obs_space = None
+
+    if interceptor_id is not None:
+        interceptor_obs_space = probe_env.observation_space(interceptor_id)
+        interceptor_act_space = probe_env.action_space(interceptor_id)
+        policies["interceptor_policy"] = PolicySpec(
+            observation_space=interceptor_obs_space,
+            action_space=interceptor_act_space,
+        )
+
+    if target_id is not None:
+        target_obs_space = probe_env.observation_space(target_id)
+        target_act_space = probe_env.action_space(target_id)
+        policies["target_policy"] = PolicySpec(
+            observation_space=target_obs_space,
+            action_space=target_act_space,
+        )
+
+    if not policies:
+        raise ValueError("No policies were created. Check scenario agent configuration.")
+
+    policies_to_train = [policy_id for policy_id in policies.keys() if policy_id != "target_policy" or not args.freeze_targets]
+    if not policies_to_train:
+        policies_to_train = list(policies.keys())
+
+    def rllib_policy_mapping_fn(agent_id: str, *unused_args: Any, **unused_kwargs: Any) -> str:
+        return policy_mapping_fn(agent_id)
+
+    config = (
+        PPOConfig()
+        .framework("torch")
+        .environment(
+            env=env_name,
+            env_config={
+                "n_interceptors": args.n_interceptors,
+                "n_targets": args.n_targets,
+                "seed": args.seed,
+                "orbital_env_config": orbital_env_config,
+            },
+            disable_env_checking=True,
+        )
+        .env_runners(num_env_runners=args.num_workers, rollout_fragment_length="auto")
+        .training(
+            train_batch_size=args.batch_size,
+            lr=args.lr,
+            gamma=args.gamma,
+            num_epochs=args.num_epochs,
+        )
+        .resources(num_gpus=args.num_gpus)
+        .debugging(seed=args.seed, log_level="INFO")
+        .callbacks(OrbitalPhysicsCallbacks)
+        .multi_agent(
+            policies=policies,
+            policy_mapping_fn=rllib_policy_mapping_fn,
+            policies_to_train=policies_to_train,
+        )
+    )
+
+    return {
+        "args": args,
+        "local_dir": local_dir,
+        "experiment_name": experiment_name,
+        "env_name": env_name,
+        "config": config,
+        "interceptor_obs_space": interceptor_obs_space,
+        "target_obs_space": target_obs_space,
+        "results_dir": os.path.join(local_dir, experiment_name),
+    }
+
+def launch_training(training_ctx: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Perform the training.
+    """
+    args: argparse.Namespace = training_ctx["args"]
+    config: PPOConfig = training_ctx["config"]
+
+    resume_mode = "AUTO" if args.resume else False
+
+    analysis = tune.run(
+        "PPO",
+        name=training_ctx["experiment_name"],
+        stop={"training_iteration": args.iterations},
+        config=config.to_dict(),
+        storage_path=training_ctx["local_dir"],
+        checkpoint_freq=args.checkpoint_freq,
+        checkpoint_at_end=True,
+        resume=resume_mode,
+        verbose=1,
+    )
+    training_ctx["analysis"] = analysis
+
+    if analysis.trials:
+        trial = analysis.trials[0]
+        last_checkpoint = analysis.get_last_checkpoint(trial)
+        if hasattr(last_checkpoint, "path"):
+            training_ctx["last_checkpoint_path"] = last_checkpoint.path
+        elif last_checkpoint is not None:
+            training_ctx["last_checkpoint_path"] = str(last_checkpoint)
+
+    return training_ctx
+
+def teardown_training(training_ctx: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Tear down everything that need to be cleaned after the training.
+    """
+    if ray.is_initialized():
+        ray.shutdown()
+    return training_ctx
+
 
 def main():
     args = parse_args()
     
     # Initialize Ray
     ray.init(ignore_reinit_error=True)
-    
-    # Register the environment
-    register_env("orbital_env", lambda config: env_creator(config))
-    
-    # Instantiate a temporary environment to retrieve observation and action spaces
-    # This ensures that policies are correctly configured for the current scenario.
-    temp_env_config = {
-        "n_interceptors": args.n_interceptors,
-        "n_targets": args.n_targets,
-        "timestep_sec": args.timestep,
-        "episode_length": args.episode_length,
-        "maneuver_frame": args.maneuver_frame,
-        "seed": args.seed,
-        "freeze_targets": args.freeze_targets,
-    }
-    temp_env = env_creator(temp_env_config)
-    
-    # ParallelPettingZooEnv exposes observation_space and action_space as dicts 
-    # mapping agent IDs to their individual spaces.
-    # We extract the individual spaces to define our policies.
-    def get_agent_space(space_dict, role_prefix):
-        for agent_id, space in space_dict.items():
-            if agent_id.startswith(role_prefix):
-                return space
-        return next(iter(space_dict.values()))
 
-    int_obs_space = get_agent_space(temp_env.observation_space, "interceptor")
-    int_act_space = get_agent_space(temp_env.action_space, "interceptor")
-    tar_obs_space = get_agent_space(temp_env.observation_space, "target")
-    tar_act_space = get_agent_space(temp_env.action_space, "target")
+    # Set up the training
+    training_ctx = {}
+    try:
+        training_ctx = setup_training(args)
     
-    logger.info(f"Initialized training with {args.n_interceptors} interceptors and {args.n_targets} targets.")
-    logger.info(f"Interceptor Obs Space: {int_obs_space}")
-    logger.info(f"Target Obs Space: {tar_obs_space}")
-    logger.info(f"Maneuver frame: {args.maneuver_frame}")
-    logger.info(f"Targets maneuvering disabled: {args.freeze_targets}")
+        logger.info(f"Initialized training with {args.n_interceptors} interceptors and {args.n_targets} targets.")
+        logger.info(f"Interceptor Obs Space: {training_ctx['interceptor_obs_space']}")
+        logger.info(f"Target Obs Space: {training_ctx['target_obs_space']}")
+        logger.info(f"Maneuver frame: {args.maneuver_frame}")
+        logger.info(f"Targets maneuvering disabled: {args.freeze_targets}")
+    
+        logger.info(f"Results will be saved to: {training_ctx['results_dir']}")
 
-    policies_to_train = ["interceptor_policy"] if args.freeze_targets else None
-    
-    # Configure RLlib PPO Algorithm
-    config = (
-        PPOConfig()
-        .environment(
-            "orbital_env", 
-            env_config=temp_env_config
-        )
-        .framework("torch")
-        .env_runners(num_env_runners=args.num_workers)
-        .resources(num_gpus=args.num_gpus)
-        .training(
-            train_batch_size=args.batch_size,
-            lr=args.lr,
-            gamma=args.gamma,
-            num_epochs=args.num_epochs,
-            model={"fcnet_hiddens": [256, 256]}
-        )
-        .multi_agent(
-            policies={
-                "interceptor_policy": (None, int_obs_space, int_act_space, {}),
-                "target_policy": (None, tar_obs_space, tar_act_space, {}),
-            },
-            policy_mapping_fn=policy_mapping_fn,
-            policies_to_train=policies_to_train,
-        )
-        .debugging(seed=args.seed)
-        .callbacks(OrbitalPhysicsCallbacks)
-    )
-    
-    # Prepare storage path
-    storage_path = os.path.abspath(os.path.expanduser(args.local_dir))
-    storage_path = os.path.normpath(storage_path)
-    exp_name = args.name
+        # Start training
+        training_ctx = launch_training(training_ctx)
 
-    if args.resume and not exp_name:
-        # If resume is requested but no name is provided, 
-        # we assume local_dir is the experiment directory.
-        exp_name = os.path.basename(storage_path)
-        storage_path = os.path.dirname(storage_path)
+        logger.info("Training completed successfully.")
+        if "last_checkpoint_path" in training_ctx:
+            logger.info(f"Last checkpoint: {training_ctx['last_checkpoint_path']}")
 
-    if not os.path.exists(storage_path):
-        os.makedirs(storage_path)
-    
-    logger.info(f"Results will be saved to: {os.path.join(storage_path, exp_name) if exp_name else storage_path}")
-
-    # Start training
-    tune.run(
-        "PPO",
-        name=exp_name,
-        config=config.to_dict(),
-        stop={"training_iteration": args.iterations},
-        checkpoint_freq=args.checkpoint_freq,
-        checkpoint_at_end=True,
-        storage_path=storage_path,
-        resume=args.resume,
-    )
-    
-    logger.info("Training completed successfully.")
-    ray.shutdown()
+    finally:
+        training_ctx = teardown_training(training_ctx)
 
 if __name__ == "__main__":
     main()
