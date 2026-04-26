@@ -1,7 +1,7 @@
 import numpy as np
 from astropy import units as u
 
-from main.python.utils.constants import R_EARTH
+from src.main.python.utils.constants import R_EARTH
 
 def get_random_leo_elements(rng, alt_min=400.0, alt_max=600.0):
     """Generate random LEO Keplerian elements."""
