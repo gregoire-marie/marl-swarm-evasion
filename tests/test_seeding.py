@@ -88,13 +88,13 @@ def _make_dummy_env(n_agents=2):
                 0 * u.deg,
                 0 * u.deg,
             ),
-            "init_delta_v": 10.0,
+            "init_delta_v": 10000.0,
         }
     env_config = {
         "timestep_sec": 10,
         "episode_length": 5,
         "start_time": "2025-01-01 00:00:00",
-        "max_delta_v_kms": 0.1,
+        "max_delta_v_mps": 100.0,
     }
     return OrbitalEnv(agent_configs, env_config)
 

@@ -23,7 +23,7 @@ def make_dummy_config(n_agents=2, maneuver_frame="ECI"):
                 0 * u.deg,
                 0 * u.deg
             ),
-            "init_delta_v": 10.0
+            "init_delta_v": 10000.0
         }
         agent_configs[agent_id] = config
 
@@ -31,7 +31,7 @@ def make_dummy_config(n_agents=2, maneuver_frame="ECI"):
         "timestep_sec": 10,
         "episode_length": 10,
         "start_time": "2025-01-01 00:00:00",
-        "max_delta_v_kms": 0.1,
+        "max_delta_v_mps": 100.0,
         "maneuver_frame": maneuver_frame,
     }
 
@@ -67,7 +67,7 @@ def test_orbital_env_reset_and_step():
         assert obs_space.contains(ob), f"{agent_id} obs not in observation space"
 
     # Store pre-step state
-    pre_dvs = {aid: env._agent_states[aid].get_used_delta_v().to_value(u.km / u.s) for aid in env.agents}
+    pre_dvs = {aid: env._agent_states[aid].get_used_delta_v().to_value(u.m / u.s) for aid in env.agents}
     pre_obs = {aid: ob.copy() for aid, ob in obs_0.items()}
 
     # Build zero-action dictionary (no Δv)
@@ -100,7 +100,7 @@ def test_orbital_env_reset_and_step():
         assert delta_obs > 1e-3, f"Observation for {agent_id} did not change after propagation"
 
         # Δv should not have changed
-        post_dv = env._agent_states[agent_id].get_used_delta_v().to_value(u.km / u.s)
+        post_dv = env._agent_states[agent_id].get_used_delta_v().to_value(u.m / u.s)
         assert np.isclose(post_dv, pre_dvs[agent_id], atol=1e-6), f"Δv changed for {agent_id} without action"
 
         # Observation space compliance post-step
@@ -153,15 +153,15 @@ def test_action_clipping_and_render():
     env = OrbitalEnv(agent_configs, env_config)
     env.reset()
 
-    # Action exceeds max_delta_v (0.1 km/s)
-    large_action = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+    # Action exceeds max_delta_v (100 m/s)
+    large_action = np.array([1000.0, 0.0, 0.0], dtype=np.float32)
     actions = {"agent_0": large_action}
 
     obs, rewards, terms, truncs, infos = env.step(actions)
 
-    # Check used delta-v is clipped to max_delta_v (0.1)
-    used_dv = env._agent_states["agent_0"].get_used_delta_v().to_value(u.km / u.s)
-    assert np.isclose(used_dv, 0.1, atol=1e-6)
+    # Check used delta-v is clipped to max_delta_v (100)
+    used_dv = env._agent_states["agent_0"].get_used_delta_v().to_value(u.m / u.s)
+    assert np.isclose(used_dv, 100.0, atol=1e-6)
 
     # Test render (smoke test)
     env.render()
@@ -184,8 +184,8 @@ def test_action_space_contains():
     env = OrbitalEnv(agent_configs, env_config)
     space = env.action_space("agent_0")
     assert space.shape == (3,)
-    assert space.contains(np.array([0.05, 0.05, 0.05], dtype=np.float32))
-    assert not space.contains(np.array([0.2, 0.0, 0.0], dtype=np.float32))
+    assert space.contains(np.array([50.0, 50.0, 50.0], dtype=np.float32))
+    assert not space.contains(np.array([200.0, 0.0, 0.0], dtype=np.float32))
 
 
 def test_telemetry_helpers():
@@ -201,8 +201,8 @@ def test_telemetry_helpers():
     assert position.shape == (3,)
     assert np.all(np.isfinite(position))
 
-    initial_remaining_dv = env.get_remaining_delta_v_kms(aid0)
-    assert np.isclose(initial_remaining_dv, 10.0, atol=1e-6)
+    initial_remaining_dv = env.get_remaining_delta_v_mps(aid0)
+    assert np.isclose(initial_remaining_dv, 10000.0, atol=1e-6)
 
     initial_distances = env.get_pairwise_distances_km()
     assert set(initial_distances.keys()) == {f"{aid0}__{aid1}"}
@@ -214,10 +214,10 @@ def test_telemetry_helpers():
     )
     assert np.isclose(initial_distances[f"{aid0}__{aid1}"], expected_initial_distance, atol=1e-6)
 
-    env.step({aid0: np.array([0.1, 0.0, 0.0], dtype=np.float32), aid1: np.zeros(3, dtype=np.float32)})
+    env.step({aid0: np.array([100.0, 0.0, 0.0], dtype=np.float32), aid1: np.zeros(3, dtype=np.float32)})
 
-    updated_remaining_dv = env.get_remaining_delta_v_kms(aid0)
-    assert np.isclose(updated_remaining_dv, 9.9, atol=1e-6)
+    updated_remaining_dv = env.get_remaining_delta_v_mps(aid0)
+    assert np.isclose(updated_remaining_dv, 9900.0, atol=1e-6)
 
     updated_distances = env.get_pairwise_distances_km()
     expected_updated_distance = float(
@@ -243,15 +243,15 @@ def test_tnw_maneuver_frame_applies_expected_eci_burn():
     shadow_state.propagate_to(burn_time)
     _, v_before = shadow_state.get_rv()
 
-    raw_action = np.array([0.2, -0.01, 0.0], dtype=np.float32)  # exceeds max_delta_v
+    raw_action = np.array([200.0, -10.0, 0.0], dtype=np.float32)  # exceeds max_delta_v
     clipped = raw_action * (env.max_delta_v / np.linalg.norm(raw_action))
-    expected_dv_eci = shadow_state.tnw_to_eci(clipped * u.km / u.s)
+    expected_dv_eci = shadow_state.tnw_to_eci(clipped * u.m / u.s)
 
     env.step({agent_id: raw_action})
     _, v_after = env._agent_states[agent_id].orbit_state.get_rv()
 
-    measured_dv = (v_after - v_before).to_value(u.km / u.s)
-    assert np.allclose(measured_dv, expected_dv_eci.to_value(u.km / u.s), atol=1e-8)
+    measured_dv = (v_after - v_before).to_value(u.m / u.s)
+    assert np.allclose(measured_dv, expected_dv_eci.to_value(u.m / u.s), atol=1e-5)
 
 
 def test_invalid_maneuver_frame_raises():

@@ -5,7 +5,7 @@ DEFAULT_OBJECTIVES = {
     "collision_distance_km": 2.0,        # Threshold where a target is considered intercepted (km)
     "avoid_distance_km": 10.0,           # Minimal spacing for targets to keep with interceptors (km)
     "same_role_spacing_km": 10.0,        # Minimal spacing to keep between agents with the same role (km)
-    "minimal_delta_v_kms": 0.01e-3,      # Minimal delta-v to consider fuel depleted in an agent (km/s)
+    "minimal_delta_v_mps": 0.01,         # Minimal delta-v to consider fuel depleted in an agent (m/s)
     "reentry_altitude_km": 120,          # Altitude at which a satellite is considered reentered in the atmosphere (km)
 }
 
@@ -20,7 +20,7 @@ DEFAULT_REWARD_WEIGHTS = {
     "target_dispersion": 3.0,
 
     # All agents
-    "fuel_penalty": -1.0,                   # Linear penalty for Δv used
+    "fuel_penalty": -1.0e-3,                # Linear penalty for Δv used (m/s input)
 }
 
 DEFAULT_REWARD_WEIGHTS_V2 = {

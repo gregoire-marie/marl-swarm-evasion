@@ -36,10 +36,10 @@ def parse_args():
     scenario_group.add_argument("--timestep", type=float, default=60.0, help="Simulation timestep in seconds.")
     scenario_group.add_argument("--episode-length", type=int, default=100, help="Number of steps per episode.")
     scenario_group.add_argument(
-        "--max-delta-v-kms",
+        "--max-delta-v-mps",
         type=float,
-        default=0.02,
-        help="The maximum single maneuver delta-v in km/s.",
+        default=20.0,
+        help="The maximum single maneuver delta-v in m/s.",
     )
     scenario_group.add_argument(
         "--maneuver-frame",

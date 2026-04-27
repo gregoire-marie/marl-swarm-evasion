@@ -177,9 +177,9 @@ def delta_v_norm(dv_vec):
 
     Returns
     -------
-    Quantity in km/s
+    Quantity in m/s
     """
-    return np.linalg.norm(dv_vec.to_value(u.km / u.s)) * u.km / u.s
+    return np.linalg.norm(dv_vec.to_value(u.m / u.s)) * u.m / u.s
 
 def flatten_covariance(cov_matrix):
     """

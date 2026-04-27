@@ -55,12 +55,12 @@ def test_keplerian_to_array_properties():
 
 
 def test_delta_v_norm_units_and_value():
-    dv_vec = np.array([0.01, -0.02, 0.0]) * u.km / u.s
+    dv_vec = np.array([10.0, -20.0, 0.0]) * u.m / u.s
     mag = delta_v_norm(dv_vec)
     assert hasattr(mag, "unit")
-    assert mag.unit == (u.km / u.s)
-    expected = np.linalg.norm(dv_vec.to_value(u.km / u.s))
-    assert np.isclose(mag.to_value(u.km / u.s), expected, rtol=1e-12)
+    assert mag.unit == (u.m / u.s)
+    expected = np.linalg.norm(dv_vec.to_value(u.m / u.s))
+    assert np.isclose(mag.to_value(u.m / u.s), expected, rtol=1e-12)
 
 
 def test_flatten_covariance():

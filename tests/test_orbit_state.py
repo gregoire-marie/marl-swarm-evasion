@@ -61,7 +61,7 @@ def test_propagation_forward():
 
     # Compute measured position & velocity changes
     dr = np.linalg.norm((r1 - r0).to_value(u.km))         # [km]
-    dv = np.linalg.norm((v1 - v0).to_value(u.km / u.s))   # [km/s]
+    dv = np.linalg.norm((v1 - v0).to_value(u.m / u.s))    # [m/s]
 
     # Compute expected Δr using linear motion: dr ≈ |v₀| * Δt
     v0_mag = np.linalg.norm(v0.to_value(u.km / u.s))      # [km/s]
@@ -72,12 +72,12 @@ def test_propagation_forward():
     )
 
     # Compute expected Δv using central acceleration: dv ≈ |a| * Δt
-    r0_mag = np.linalg.norm(r0.to_value(u.km))            # [km]
-    a_mag = MU_EARTH.to_value() / r0_mag**2               # [km/s²]
-    expected_dv = a_mag * dt                              # [km/s]
+    r0_mag = np.linalg.norm(r0.to_value(u.m))            # [m]
+    a_mag = MU_EARTH.to_value(u.m**3 / u.s**2) / r0_mag**2  # [m/s²]
+    expected_dv = a_mag * dt                             # [m/s]
 
     assert np.isclose(dv, expected_dv, rtol=0.0005), (
-        f"Velocity change Δv = {dv:.5f} km/s, expected ≈ {expected_dv:.5f} km/s"
+        f"Velocity change Δv = {dv:.5f} m/s, expected ≈ {expected_dv:.5f} m/s"
     )
 
 
@@ -91,13 +91,13 @@ def test_delta_v_application():
     r_before, v_before = state.get_rv()
 
     # Apply delta-v at that exact point
-    dv = np.array([0.01, -0.005, 0.002]) * u.km / u.s
+    dv = np.array([10.0, -5.0, 2.0]) * u.m / u.s
     state.apply_delta_v(dv, maneuver_time)
 
     r_after, v_after = state.get_rv()
 
-    delta_v_measured = np.linalg.norm((v_after - v_before).to_value())
-    expected_dv = np.linalg.norm(dv.to_value())
+    delta_v_measured = np.linalg.norm((v_after - v_before).to_value(u.m / u.s))
+    expected_dv = np.linalg.norm(dv.to_value(u.m / u.s))
 
     assert np.isclose(delta_v_measured, expected_dv, rtol=1e-6)
 
@@ -107,21 +107,21 @@ def test_tnw_conversion_roundtrip():
     maneuver_time = ess_epoch + TimeDelta(120.0, format="sec")
     state.propagate_to(maneuver_time)
 
-    dv_tnw = np.array([0.01, -0.005, 0.002]) * u.km / u.s
+    dv_tnw = np.array([10.0, -5.0, 2.0]) * u.m / u.s
     dv_eci = state.tnw_to_eci(dv_tnw)
     dv_tnw_back = state.eci_to_tnw(dv_eci)
 
     assert np.allclose(
-        dv_tnw_back.to_value(u.km / u.s),
-        dv_tnw.to_value(u.km / u.s),
+        dv_tnw_back.to_value(u.m / u.s),
+        dv_tnw.to_value(u.m / u.s),
         rtol=1e-9,
         atol=1e-12,
     )
 
     # Rotation must preserve norm.
     assert np.isclose(
-        np.linalg.norm(dv_eci.to_value(u.km / u.s)),
-        np.linalg.norm(dv_tnw.to_value(u.km / u.s)),
+        np.linalg.norm(dv_eci.to_value(u.m / u.s)),
+        np.linalg.norm(dv_tnw.to_value(u.m / u.s)),
         rtol=1e-9,
     )
 
@@ -132,21 +132,21 @@ def test_delta_v_application_in_tnw_frame():
     state.propagate_to(maneuver_time)
     _, v_before = state.get_rv()
 
-    dv_tnw = np.array([0.01, 0.0, 0.0]) * u.km / u.s
+    dv_tnw = np.array([10.0, 0.0, 0.0]) * u.m / u.s
     state.apply_delta_v(dv_tnw, maneuver_time, maneuver_frame="TNW")
     _, v_after = state.get_rv()
 
-    speed_before = np.linalg.norm(v_before.to_value(u.km / u.s))
-    speed_after = np.linalg.norm(v_after.to_value(u.km / u.s))
+    speed_before = np.linalg.norm(v_before.to_value(u.m / u.s))
+    speed_after = np.linalg.norm(v_after.to_value(u.m / u.s))
 
-    assert np.isclose(speed_after - speed_before, 0.01, atol=1e-8)
+    assert np.isclose(speed_after - speed_before, 10.0, atol=1e-5)
 
 
 def test_delta_v_application_rejects_invalid_shape():
     state = OrbitState(get_sample_elements(), ess_epoch)
     maneuver_time = ess_epoch + TimeDelta(30.0, format="sec")
 
-    bad_shape_dv = np.array([0.01, 0.0]) * u.km / u.s
+    bad_shape_dv = np.array([10.0, 0.0]) * u.m / u.s
     with np.testing.assert_raises(ValueError):
         state.apply_delta_v(bad_shape_dv, maneuver_time, maneuver_frame="ECI")
 

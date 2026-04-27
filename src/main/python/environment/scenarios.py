@@ -36,7 +36,7 @@ def pursuit_evasion_scenario(n_interceptors=1, n_targets=1, seed=None):
         agent_configs[agent_id] = {
             "role": "interceptor",
             "init_orbit": tuple(elements),
-            "init_delta_v": 10.0
+            "init_delta_v": 10000.0
         }
         
     # Targets
@@ -50,7 +50,7 @@ def pursuit_evasion_scenario(n_interceptors=1, n_targets=1, seed=None):
         agent_configs[agent_id] = {
             "role": "target",
             "init_orbit": tuple(elements),
-            "init_delta_v": 5.0  # Targets usually have less fuel or are more constrained
+            "init_delta_v": 5000.0  # Targets usually have less fuel or are more constrained
         }
         
     return agent_configs
@@ -72,7 +72,7 @@ def constellation_scenario(n_agents=4, seed=None):
         agent_configs[agent_id] = {
             "role": "interceptor" if i % 2 == 0 else "target",
             "init_orbit": tuple(elements),
-            "init_delta_v": 10.0
+            "init_delta_v": 10000.0
         }
         
     return agent_configs

@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 from astropy import units as u
-from src.main.python.utils.units import ensure_quantity, assert_unit, to_km, to_kms, to_deg, to_value
+from src.main.python.utils.units import ensure_quantity, assert_unit, to_km, to_mps, to_deg, to_value
 
 def test_ensure_quantity():
     # From float
@@ -21,7 +21,7 @@ def test_assert_unit():
 
 def test_convenience_helpers():
     assert to_km(5).unit == u.km
-    assert to_kms(5).unit == u.km / u.s
+    assert to_mps(5).unit == u.m / u.s
     assert to_deg(5).unit == u.deg
 
 def test_to_value():

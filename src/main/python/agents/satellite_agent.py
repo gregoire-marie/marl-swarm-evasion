@@ -22,7 +22,7 @@ class SatelliteAgent:
         initial_elements (tuple): Initial Keplerian elements (a, e, i, RAAN, argp, M).
         epoch (Time): Initial epoch of the simulation.
         orbit_state (OrbitState): Current orbital state.
-        used_delta_v (Quantity): Cumulative delta-v applied (km/s).
+        used_delta_v (Quantity): Cumulative delta-v applied (m/s).
     """
 
     def __init__(self, agent_id: str, config: dict, epoch: Time):
@@ -34,22 +34,22 @@ class SatelliteAgent:
             config (dict): Configuration dictionary containing:
                 - "role": String either "interceptor" or "target".
                 - "init_orbit": Tuple of 6 Keplerian orbital elements as astropy Quantities.
-                - "init_delta_v": Astropy quantity (in km/s) setting the initial orbital maneuver budget.
+                - "init_delta_v": Astropy quantity (in m/s) setting the initial orbital maneuver budget.
             epoch (Time): Start time of the simulation.
         """
         self.id = agent_id
         self.role = config["role"]
         self.initial_elements = config["init_orbit"]
-        # Normalize init_delta_v to Quantity[km/s] even if provided as plain float
+        # Normalize init_delta_v to Quantity[m/s] even if provided as plain float.
         init_dv_val = config.get("init_delta_v", 0.0)
         if hasattr(init_dv_val, "to"):
-            self.init_delta_v = init_dv_val.to(u.km / u.s)
+            self.init_delta_v = init_dv_val.to(u.m / u.s)
         else:
-            self.init_delta_v = float(init_dv_val) * u.km / u.s  # km/s
+            self.init_delta_v = float(init_dv_val) * u.m / u.s
         self.epoch = epoch
 
         self.orbit_state = OrbitState(self.initial_elements, epoch)
-        self.used_delta_v = 0.0 * u.km / u.s
+        self.used_delta_v = 0.0 * u.m / u.s
 
     def apply_action(self, dv_vector: np.ndarray, time: Time, maneuver_frame: str = "ECI"):
         """
@@ -57,25 +57,25 @@ class SatelliteAgent:
 
         Args:
             dv_vector (np.ndarray or Quantity): Delta-v vector in the selected
-                maneuver frame, shape (3,), values in km/s.
+                maneuver frame, shape (3,), values in m/s.
             time (Time): Time at which the maneuver is performed.
             maneuver_frame (str): Maneuver frame, either "ECI" or "TNW".
         """
         if hasattr(dv_vector, "to"):
-            dv = dv_vector.to(u.km / u.s)
-            dv_values = np.asarray(dv.to_value(u.km / u.s), dtype=float)
+            dv = dv_vector.to(u.m / u.s)
+            dv_values = np.asarray(dv.to_value(u.m / u.s), dtype=float)
         else:
             dv_values = np.asarray(dv_vector, dtype=float)
-            dv = dv_values * u.km / u.s
+            dv = dv_values * u.m / u.s
 
         if dv_values.shape != (3,):
             raise ValueError(f"Delta-v action must have shape (3,), got {dv_values.shape}.")
 
         if np.linalg.norm(dv_values) > 0:
-            log.debug(f"[{self.id}] Applying Δv = {dv_values} km/s in {maneuver_frame} at t={time.iso}")
+            log.debug(f"[{self.id}] Applying Δv = {dv_values} m/s in {maneuver_frame} at t={time.iso}")
 
         self.orbit_state.apply_delta_v(dv, time, maneuver_frame=maneuver_frame)
-        # Accumulate used Δv as a Quantity[km/s] to preserve unit consistency
+        # Accumulate used Δv as a Quantity[m/s] to preserve unit consistency.
         self.used_delta_v += delta_v_norm(dv)
 
     def propagate_to(self, time: Time):
@@ -123,10 +123,10 @@ class SatelliteAgent:
         obs.extend([a_norm, e_norm, i_norm, raan_norm, argp_norm, m_norm])
         
         # Remaining delta-v gauge
-        remaining_dv_value = self.init_delta_v.to_value(u.km / u.s) - self.used_delta_v.to_value(u.km / u.s)
+        remaining_dv_value = self.init_delta_v.to_value(u.m / u.s) - self.used_delta_v.to_value(u.m / u.s)
         remaining_dv_value = max(0.0, float(remaining_dv_value))
         # Normalize fuel (using its own init_delta_v if possible, else FUEL_SCALE)
-        fuel_norm_scale = self.init_delta_v.to_value(u.km / u.s) if self.init_delta_v.to_value(u.km / u.s) > 0 else FUEL_SCALE
+        fuel_norm_scale = self.init_delta_v.to_value(u.m / u.s) if self.init_delta_v.to_value(u.m / u.s) > 0 else FUEL_SCALE
         obs.append(remaining_dv_value / fuel_norm_scale)
 
         # --- Other agents (all roles) ---
@@ -182,7 +182,7 @@ class SatelliteAgent:
         Returns the amount of remaining delta-v in the agent.
 
         Returns:
-            Quantity: Remaining delta-v (km/s).
+            Quantity: Remaining delta-v (m/s).
         """
         return self.init_delta_v - self.get_used_delta_v()
 
@@ -191,7 +191,7 @@ class SatelliteAgent:
         Returns the total delta-v applied by the agent so far.
 
         Returns:
-            Quantity: Total delta-v (km/s).
+            Quantity: Total delta-v (m/s).
         """
         return self.used_delta_v
 

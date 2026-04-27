@@ -2,13 +2,13 @@ import argparse
 
 from src.main.python.utils.rllib_setup import (
     OrbitalRunSpec,
-    LEGACY_ENV_DEFAULT_MAX_DELTA_V_KMS,
+    DEFAULT_MAX_DELTA_V_MPS,
     run_spec_from_args,
     run_spec_from_rllib_env_config,
 )
 
 
-def test_run_spec_from_rllib_env_config_keeps_legacy_max_delta_v_fallback():
+def test_run_spec_from_rllib_env_config_uses_default_max_delta_v_fallback():
     spec = run_spec_from_rllib_env_config(
         {
             "n_interceptors": 1,
@@ -30,7 +30,7 @@ def test_run_spec_from_rllib_env_config_keeps_legacy_max_delta_v_fallback():
         timestep=60.0,
         episode_length=100,
         start_time="2025-01-01 00:00:00",
-        max_delta_v_kms=LEGACY_ENV_DEFAULT_MAX_DELTA_V_KMS,
+        max_delta_v_mps=DEFAULT_MAX_DELTA_V_MPS,
         maneuver_frame="TNW",
         freeze_targets=True,
         seed=7,
@@ -44,7 +44,7 @@ def test_run_spec_from_args_overrides_checkpoint_defaults():
         timestep=60.0,
         episode_length=100,
         start_time="2025-01-01 00:00:00",
-        max_delta_v_kms=0.1,
+        max_delta_v_mps=100.0,
         maneuver_frame="ECI",
         freeze_targets=False,
         seed=42,
@@ -55,7 +55,7 @@ def test_run_spec_from_args_overrides_checkpoint_defaults():
         timestep=None,
         episode_length=250,
         start_time=None,
-        max_delta_v_kms=0.02,
+        max_delta_v_mps=20.0,
         maneuver_frame="tnw",
         freeze_targets=True,
         seed=99,
@@ -69,7 +69,7 @@ def test_run_spec_from_args_overrides_checkpoint_defaults():
         timestep=60.0,
         episode_length=250,
         start_time="2025-01-01 00:00:00",
-        max_delta_v_kms=0.02,
+        max_delta_v_mps=20.0,
         maneuver_frame="TNW",
         freeze_targets=True,
         seed=99,

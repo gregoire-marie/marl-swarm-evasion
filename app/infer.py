@@ -32,7 +32,7 @@ def parse_args():
     parser.add_argument("--n-targets", type=int, default=None, help="Number of target agents. Defaults to the checkpoint config.")
     parser.add_argument("--timestep", type=float, default=None, help="Simulation timestep in seconds. Defaults to the checkpoint config.")
     parser.add_argument("--episode-length", type=int, default=None, help="Number of steps per episode. Defaults to the checkpoint config.")
-    parser.add_argument("--max-delta-v-kms", type=float, default=None, help="The maximum single maneuver delta-v in km/s. Defaults to the checkpoint config.")
+    parser.add_argument("--max-delta-v-mps", type=float, default=None, help="The maximum single maneuver delta-v in m/s. Defaults to the checkpoint config.")
     parser.add_argument(
         "--freeze-targets",
         action=argparse.BooleanOptionalAction,
@@ -97,7 +97,7 @@ def launch_inference(inference_ctx: Dict[str, Any]) -> Dict[str, Any]:
     step_times_min: List[float] = []
     trajectories_km: Dict[str, List[np.ndarray]] = {aid: [env.get_position_km(aid)] for aid in agent_ids}
     rewards_hist: Dict[str, List[float]] = {aid: [] for aid in agent_ids}
-    fuel_hist: Dict[str, List[float]] = {aid: [env.get_remaining_delta_v_kms(aid)] for aid in agent_ids}
+    fuel_hist: Dict[str, List[float]] = {aid: [env.get_remaining_delta_v_mps(aid)] for aid in agent_ids}
     action_mag_hist: Dict[str, List[float]] = {aid: [] for aid in agent_ids}
     distances_hist: Dict[str, List[float]] = {pair_key: [] for pair_key in initial_distances}
     for pair_key, distance in initial_distances.items():
@@ -131,8 +131,8 @@ def launch_inference(inference_ctx: Dict[str, Any]) -> Dict[str, Any]:
             if spec.freeze_targets and aid.startswith("target"):
                 applied_action = np.zeros(3, dtype=np.float32)
             norm = float(np.linalg.norm(applied_action))
-            if norm > spec.max_delta_v_kms and norm > 0.0:
-                norm = spec.max_delta_v_kms
+            if norm > spec.max_delta_v_mps and norm > 0.0:
+                norm = spec.max_delta_v_mps
             action_mag_hist[aid].append(norm)
 
         observations, rewards, terminations, truncations, infos = env.step(actions)
@@ -145,7 +145,7 @@ def launch_inference(inference_ctx: Dict[str, Any]) -> Dict[str, Any]:
         for aid in agent_ids:
             rewards_hist[aid].append(float(rewards.get(aid, 0.0)))
             trajectories_km[aid].append(env.get_position_km(aid))
-            fuel_hist[aid].append(env.get_remaining_delta_v_kms(aid))
+            fuel_hist[aid].append(env.get_remaining_delta_v_mps(aid))
 
         for pair_key, distance in env.get_pairwise_distances_km().items():
             distances_hist[pair_key].append(distance)
@@ -167,7 +167,7 @@ def launch_inference(inference_ctx: Dict[str, Any]) -> Dict[str, Any]:
         "truncated": truncated,
         "flags": final_flags,
         "total_rewards": total_rewards,
-        "remaining_delta_v_kms": final_remaining_fuel,
+        "remaining_delta_v_mps": final_remaining_fuel,
         "final_pairwise_distances_km": final_distances,
     }
 
@@ -178,8 +178,8 @@ def launch_inference(inference_ctx: Dict[str, Any]) -> Dict[str, Any]:
         "step_times_min": step_times_min,
         "trajectories_km": trajectories_km,
         "rewards": rewards_hist,
-        "fuel_kms": fuel_hist,
-        "action_magnitudes_kms": action_mag_hist,
+        "fuel_mps": fuel_hist,
+        "action_magnitudes_mps": action_mag_hist,
         "distances_km": distances_hist,
         "report": report,
     }
@@ -194,8 +194,8 @@ def plot_inference(plot_save_dir: str, kargs):
     step_times_min: List[float] = kargs["step_times_min"]
     trajectories_km: Dict[str, List[np.ndarray]] = kargs["trajectories_km"]
     rewards_hist: Dict[str, List[float]] = kargs["rewards"]
-    fuel_hist: Dict[str, List[float]] = kargs["fuel_kms"]
-    action_mag_hist: Dict[str, List[float]] = kargs["action_magnitudes_kms"]
+    fuel_hist: Dict[str, List[float]] = kargs["fuel_mps"]
+    action_mag_hist: Dict[str, List[float]] = kargs["action_magnitudes_mps"]
     distances_hist: Dict[str, List[float]] = kargs["distances_km"]
 
     # 1. 3D Orbital Trajectories
@@ -236,15 +236,15 @@ def plot_inference(plot_save_dir: str, kargs):
     ax1.legend()
     ax1.grid(True)
 
-    ax2.set_ylabel("Fuel (km/s)")
+    ax2.set_ylabel("Fuel (m/s)")
     ax2.set_title("Remaining Fuel over Time")
     ax2.legend()
     ax2.grid(True)
 
-    ax3.set_ylabel("Action Mag (km/s)")
+    ax3.set_ylabel("Action Mag (m/s)")
     ax3.set_xlabel("Time (min)")
     ax3.set_title("Action Magnitudes over Time")
-    ax3.axhline(y=spec.max_delta_v_kms, color="k", linestyle="--", label="Max Δv Limit")
+    ax3.axhline(y=spec.max_delta_v_mps, color="k", linestyle="--", label="Max Δv Limit")
     ax3.legend()
     ax3.grid(True)
 
