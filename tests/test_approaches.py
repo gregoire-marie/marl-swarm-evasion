@@ -9,13 +9,13 @@ def test_compute_closest_approaches_kep():
     
     # Orbit A: standard LEO
     elements_A = (
-        6771.0 * u.km, 0.0001 * u.one, 51.6 * u.deg,
+        6_771_000.0 * u.m, 0.0001 * u.one, 51.6 * u.deg,
         0 * u.deg, 0 * u.deg, 0 * u.deg
     )
     
     # Orbit B: slightly ahead in Mean Anomaly
     elements_B = (
-        6771.0 * u.km, 0.0001 * u.one, 51.6 * u.deg,
+        6_771_000.0 * u.m, 0.0001 * u.one, 51.6 * u.deg,
         0 * u.deg, 0 * u.deg, 0.1 * u.deg
     )
     
@@ -32,15 +32,15 @@ def test_compute_closest_approaches_kep():
 def test_no_minima_detected(capsys):
     epoch = Time("2025-01-01 00:00:00", scale="utc")
     # Diverging orbits: A is lower (faster) and ahead of B.
-    # a_A = 6771 km, a_B = 7000 km.
+    # a_A = 6_771_000 m, a_B = 7_000_000 m.
     # M_A = 10 deg, M_B = 0 deg.
     # A will move away from B.
     elements = (
-        6771.0 * u.km, 0.0 * u.one, 0.0 * u.deg,
+        6_771_000.0 * u.m, 0.0 * u.one, 0.0 * u.deg,
         0 * u.deg, 0 * u.deg, 10 * u.deg
     )
     elements2 = (
-        7000.0 * u.km, 0.0 * u.one, 0.0 * u.deg,
+        7_000_000.0 * u.m, 0.0 * u.one, 0.0 * u.deg,
         0 * u.deg, 0 * u.deg, 0 * u.deg
     )
     

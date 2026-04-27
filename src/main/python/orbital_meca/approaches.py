@@ -27,7 +27,7 @@ def compute_closest_approaches_kep(elements_A, elements_B, epoch, N=3,
 
     Returns
     -------
-    List of (time, distance [km]) tuples for the N closest approaches.
+    List of (time, distance [m]) tuples for the N closest approaches.
     """
 
     # Unpack elements
@@ -55,7 +55,7 @@ def compute_closest_approaches_kep(elements_A, elements_B, epoch, N=3,
     for t in times:
         rA, _ = orbA.propagate(t - epoch).rv()
         rB, _ = orbB.propagate(t - epoch).rv()
-        dist = np.linalg.norm((rA - rB).to_value(u.km))
+        dist = np.linalg.norm((rA - rB).to_value(u.m))
         distances.append(dist)
 
     distances = np.array(distances)

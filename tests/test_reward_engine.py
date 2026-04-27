@@ -16,14 +16,14 @@ def default_epoch():
 @pytest.fixture
 def default_orbit_near():
     return (
-        6771.0 * u.km, 0.0001 * u.one, 51.6 * u.deg,
+        6_771_000.0 * u.m, 0.0001 * u.one, 51.6 * u.deg,
         0 * u.deg, 0 * u.deg, 0 * u.deg
     )
 
 @pytest.fixture
 def default_orbit_far():
     return (
-        6771.0 * u.km, 0.0001 * u.one, 51.6 * u.deg,
+        6_771_000.0 * u.m, 0.0001 * u.one, 51.6 * u.deg,
         0 * u.deg, 0 * u.deg, 210 * u.deg  # Further apart to avoid false positives
     )
 
@@ -70,15 +70,15 @@ def test_interception_shaping(default_epoch, default_orbit_near, default_orbit_f
 
 def test_same_role_dispersion_and_collision(default_epoch, default_orbit_near, default_orbit_far):
     i1_orbit = (
-        6771.0 * u.km, 0.0001 * u.one, 51.6 * u.deg,
+        6_771_000.0 * u.m, 0.0001 * u.one, 51.6 * u.deg,
         0 * u.deg, 0 * u.deg, 0 * u.deg
     )
     i2_orbit = (
-        6771.0 * u.km, 0.0001 * u.one, 51.6 * u.deg,
+        6_771_000.0 * u.m, 0.0001 * u.one, 51.6 * u.deg,
         0 * u.deg, 0 * u.deg, 210 * u.deg
     )
     t1_orbit = (
-        (6771.0 + 200) * u.km, 0.0001 * u.one, 51.6 * u.deg,
+        (6_771_000.0 + 200_000.0) * u.m, 0.0001 * u.one, 51.6 * u.deg,
         0 * u.deg, 0 * u.deg, 0 * u.deg
     )
     t2_orbit = t1_orbit  # Same orbit to provoke collision

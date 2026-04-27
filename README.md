@@ -53,7 +53,7 @@ This project standardizes physical units, angles, and time across the codebase f
 
 - Units and types
   - Internals use astropy quantities (Quantity) end-to-end.
-  - Distances are in kilometers (km); orbital velocities and Δv are in meters per second (m/s).
+  - Distances, orbital velocities, and Δv are in SI units: meters (m) and meters per second (m/s).
   - Angles use mean anomaly M in the public API; internally conversions may use true anomaly ν.
   - Time is handled with astropy.time (Time, TimeDelta). Avoid naive datetime.
   - At RL edges (actions/observations), values are plain numpy float arrays. Convert with .to_value(...) at boundaries.
@@ -66,14 +66,14 @@ This project standardizes physical units, angles, and time across the codebase f
 - Observations
   - Flat float vectors containing Keplerian elements and derived scalars (e.g., remaining Δv, pairwise distances).
   - Normalization:
-    - Semi-major axis: Centered around 7000 km, scaled by 1000 km.
+    - Semi-major axis: Centered around 7,000,000 m, scaled by 1,000,000 m.
     - Eccentricity: Already in [0, 1].
     - Angles (i, RAAN, argp, M): Normalized to [-1, 1] (wrapped to $[-\pi, \pi]$ then divided by $\pi$).
     - Remaining Δv: Normalized by the initial fuel budget.
-    - Distances: Scaled by 1000 km.
+    - Distances: Scaled by 1,000,000 m.
 
 - Distances
-  - Pairwise ECI distances and similar quantities are expressed in kilometers (km).
+  - Pairwise ECI distances and similar quantities are expressed in meters (m).
 
 - Seeding and determinism
   - Use utils.random.set_global_seed(seed) or pass seed to env.reset(seed=...) to seed Python, NumPy, and PyTorch (if installed).

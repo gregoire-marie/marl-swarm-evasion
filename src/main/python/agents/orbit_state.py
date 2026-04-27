@@ -41,7 +41,7 @@ class OrbitState:
 
         Args:
             elements (tuple): Orbital elements in order:
-                - a (Quantity[km]): Semi-major axis
+                - a (Quantity[m]): Semi-major axis
                 - e (Quantity[unitless]): Eccentricity
                 - i (Quantity[deg]): Inclination
                 - RAAN (Quantity[deg]): Right ascension of ascending node
@@ -204,11 +204,11 @@ class OrbitState:
 
         Returns:
             tuple:
-                - r (Quantity[km]): Position vector.
+                - r (Quantity[m]): Position vector.
                 - v (Quantity[m/s]): Velocity vector.
         """
         r, v = self.orbit.rv()
-        return r.to(u.km), v.to(u.m / u.s)
+        return r.to(u.m), v.to(u.m / u.s)
 
     def get_keplerian(self):
         """
@@ -216,7 +216,7 @@ class OrbitState:
 
         Returns:
             tuple:
-                - a (Quantity[km]): Semi-major axis
+                - a (Quantity[m]): Semi-major axis
                 - e (Quantity[unitless]): Eccentricity
                 - i (Quantity[deg]): Inclination
                 - RAAN (Quantity[deg]): Right ascension of ascending node

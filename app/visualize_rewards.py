@@ -15,7 +15,7 @@ Usage examples:
   - python app/visualize_rewards.py --xmin 1e-3 --xmax 2e3 --logx
 
 Notes:
-  - Distance unit is kilometers on the X axis for distance plots.
+  - Distance unit is meters on the X axis for distance plots.
   - Δv unit is m/s on the X axis for the fuel plot.
   - The objective dist./zero dist. shaping functions saturate or have asymptotic behavior; the
     plots include helpful reference lines to appreciate these shapes.
@@ -47,15 +47,15 @@ def build_distance_grid(xmin: float, xmax: float, n: int, logx: bool) -> np.ndar
 
 def annotate_thresholds(ax: plt.Axes, thresholds: dict):
     # Vertical lines for key distances
-    ax.axvline(thresholds["collision_distance_km"], color="#d62728", ls="--", lw=1.5, label="collision")
-    ax.axvline(thresholds["avoid_distance_km"], color="#2ca02c", ls=":", lw=1.5, label="avoid (target)")
-    ax.axvline(thresholds["same_role_spacing_km"], color="#1f77b4", ls="-.", lw=1.5, label="spacing (same-role)")
+    ax.axvline(thresholds["collision_distance_m"], color="#d62728", ls="--", lw=1.5, label="collision")
+    ax.axvline(thresholds["avoid_distance_m"], color="#2ca02c", ls=":", lw=1.5, label="avoid (target)")
+    ax.axvline(thresholds["same_role_spacing_m"], color="#1f77b4", ls="-.", lw=1.5, label="spacing (same-role)")
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Visualize reward shaping functions.")
-    parser.add_argument("--xmin", type=float, default=1e-2, help="Min distance (km) for distance plots.")
-    parser.add_argument("--xmax", type=float, default=1e2, help="Max distance (km) for distance plots.")
+    parser.add_argument("--xmin", type=float, default=1e1, help="Min distance (m) for distance plots.")
+    parser.add_argument("--xmax", type=float, default=1e5, help="Max distance (m) for distance plots.")
     parser.add_argument("--n", type=int, default=1000, help="Number of samples for curves.")
     parser.add_argument("--logx", action="store_true", help="Use logarithmic X scale for distance plots.")
 
@@ -67,19 +67,19 @@ def parse_args():
 
 def main(version):
     thresholds = {
-        "collision_distance_km": DEFAULT_OBJECTIVES["collision_distance_km"],
-        "avoid_distance_km": DEFAULT_OBJECTIVES["avoid_distance_km"],
-        "same_role_spacing_km": DEFAULT_OBJECTIVES["same_role_spacing_km"],
+        "collision_distance_m": DEFAULT_OBJECTIVES["collision_distance_m"],
+        "avoid_distance_m": DEFAULT_OBJECTIVES["avoid_distance_m"],
+        "same_role_spacing_m": DEFAULT_OBJECTIVES["same_role_spacing_m"],
     }
 
     if version == "v1":
         # Build shaping functions
         intercept_zero_d = zero_d_shaping_generator(w=DEFAULT_REWARD_WEIGHTS["intercept_shaping"])
-        evasion_objective_d = objective_d_shaping_generator(objective=thresholds["avoid_distance_km"],
+        evasion_objective_d = objective_d_shaping_generator(objective=thresholds["avoid_distance_m"],
                                                                    w=DEFAULT_REWARD_WEIGHTS["evasion_shaping"])
-        spacing_objective_d_i = objective_d_shaping_generator(objective=thresholds["same_role_spacing_km"],
+        spacing_objective_d_i = objective_d_shaping_generator(objective=thresholds["same_role_spacing_m"],
                                                                      w=DEFAULT_REWARD_WEIGHTS["interceptor_dispersion"])
-        spacing_objective_d_t = objective_d_shaping_generator(objective=thresholds["same_role_spacing_km"],
+        spacing_objective_d_t = objective_d_shaping_generator(objective=thresholds["same_role_spacing_m"],
                                                                      w=DEFAULT_REWARD_WEIGHTS["target_dispersion"])
     elif version == "v2":
         # Build shaping functions
@@ -89,15 +89,15 @@ def main(version):
             d_max=DEFAULT_REWARD_WEIGHTS_V2["zero_d_max"],
         )
         evasion_objective_d = objective_d_shaping_generator_v2(
-            d_safe=thresholds["avoid_distance_km"],
+            d_safe=thresholds["avoid_distance_m"],
             alpha=DEFAULT_REWARD_WEIGHTS["evasion_shaping"] * DEFAULT_REWARD_WEIGHTS_V2["objective_d_alpha"],
         )
         spacing_objective_d_i = objective_d_shaping_generator_v2(
-            d_safe=thresholds["same_role_spacing_km"],
+            d_safe=thresholds["same_role_spacing_m"],
             alpha=DEFAULT_REWARD_WEIGHTS["interceptor_dispersion"] * DEFAULT_REWARD_WEIGHTS_V2["objective_d_alpha"],
         )
         spacing_objective_d_t = objective_d_shaping_generator_v2(
-            d_safe=thresholds["same_role_spacing_km"],
+            d_safe=thresholds["same_role_spacing_m"],
             alpha=DEFAULT_REWARD_WEIGHTS["target_dispersion"] * DEFAULT_REWARD_WEIGHTS_V2["objective_d_alpha"],
         )
 
@@ -123,7 +123,7 @@ def main(version):
     ax.plot(xdist, y_intercept, label=f"zero dist. intercept (w={DEFAULT_REWARD_WEIGHTS['intercept_shaping']:g})", color="#d62728")
     annotate_thresholds(ax, thresholds)
     ax.set_title("Interceptor vs Target distance — zero dist. shaping (minimize distance)")
-    ax.set_xlabel("distance (km)")
+    ax.set_xlabel("distance (m)")
     ax.set_ylabel("reward")
     if args.logx:
         ax.set_xscale("log")
@@ -136,10 +136,10 @@ def main(version):
 
     # 2) Evasion (objective dist.) vs distance
     ax = axs[0, 1]
-    ax.plot(xdist, y_evasion, label=f"objective dist. evasion (obj={thresholds['avoid_distance_km']:.3g} km, w={DEFAULT_REWARD_WEIGHTS['evasion_shaping']:g})", color="#2ca02c")
+    ax.plot(xdist, y_evasion, label=f"objective dist. evasion (obj={thresholds['avoid_distance_m']:.3g} m, w={DEFAULT_REWARD_WEIGHTS['evasion_shaping']:g})", color="#2ca02c")
     annotate_thresholds(ax, thresholds)
     ax.set_title("Target evasion — objective dist. shaping (maximize distance)")
-    ax.set_xlabel("distance (km)")
+    ax.set_xlabel("distance (m)")
     ax.set_ylabel("reward")
     if args.logx:
         ax.set_xscale("log")
@@ -153,11 +153,11 @@ def main(version):
 
     # 3) Same-role spacing (objective dist.) — plot both roles weights for comparison
     ax = axs[1, 0]
-    ax.plot(xdist, y_spacing_i, label=f"interceptor spacing (obj={thresholds['same_role_spacing_km']:.3g} km, w={DEFAULT_REWARD_WEIGHTS['interceptor_dispersion']:g})", color="#1f77b4")
-    ax.plot(xdist, y_spacing_t, label=f"target spacing (obj={thresholds['same_role_spacing_km']:.3g} km, w={DEFAULT_REWARD_WEIGHTS['target_dispersion']:g})", color="#9467bd")
+    ax.plot(xdist, y_spacing_i, label=f"interceptor spacing (obj={thresholds['same_role_spacing_m']:.3g} m, w={DEFAULT_REWARD_WEIGHTS['interceptor_dispersion']:g})", color="#1f77b4")
+    ax.plot(xdist, y_spacing_t, label=f"target spacing (obj={thresholds['same_role_spacing_m']:.3g} m, w={DEFAULT_REWARD_WEIGHTS['target_dispersion']:g})", color="#9467bd")
     annotate_thresholds(ax, thresholds)
     ax.set_title("Same-role dispersion — objective dist. shaping (maximize distance)")
-    ax.set_xlabel("distance (km)")
+    ax.set_xlabel("distance (m)")
     ax.set_ylabel("reward")
     if args.logx:
         ax.set_xscale("log")

@@ -151,7 +151,7 @@ def keplerian_to_array(orbit):
 
     Returns
     -------
-    np.ndarray of [a, e, i, raan, argp, mean_anomaly] (floats)
+    np.ndarray of [a_m, e, i, raan, argp, mean_anomaly] (floats)
     """
     a, e, inc, raan, argp, nu = orbit.classical()
     # Convert true anomaly back to mean anomaly (why: keep API consistent with constructor)
@@ -159,7 +159,7 @@ def keplerian_to_array(orbit):
     E = nu_to_E(nu, e_q)
     M = E_to_M(E, e_q).to(u.deg)
     return np.array([
-        a.to_value(u.km),
+        a.to_value(u.m),
         e.value,
         unwrap_angle(inc.to_value(u.rad)),
         unwrap_angle(raan.to_value(u.rad)),
@@ -205,6 +205,6 @@ def vector_to_cartesian(vec):
 
     Returns
     -------
-    CartesianRepresentation with km units
+    CartesianRepresentation with m units
     """
-    return CartesianRepresentation(*vec) * u.km
+    return CartesianRepresentation(*vec) * u.m

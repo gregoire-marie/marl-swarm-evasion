@@ -71,14 +71,14 @@ def compute_eci_distance(state_a, state_b):
         state_a, state_b: OrbitState objects
 
     Returns:
-        float: Distance in kilometers
+        float: Distance in meters
     """
     r1, _ = state_a.get_rv()
     r2, _ = state_b.get_rv()
-    return np.linalg.norm((r1 - r2).to_value(u.km))
+    return np.linalg.norm((r1 - r2).to_value(u.m))
 
 
-def compute_altitude_km(state) -> float:
+def compute_altitude_m(state) -> float:
     r, _ = state.get_rv()
-    radius_km = np.linalg.norm(r.to_value(u.km))
-    return float(radius_km - R_EARTH.to_value(u.km))
+    radius_m = np.linalg.norm(r.to_value(u.m))
+    return float(radius_m - R_EARTH.to_value(u.m))

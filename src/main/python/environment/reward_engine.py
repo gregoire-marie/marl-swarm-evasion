@@ -5,7 +5,7 @@ from astropy.time import Time
 from typing import Dict, Optional, Tuple
 
 from src.main.python.agents.satellite_agent import SatelliteAgent
-from src.main.python.orbital_meca.orbits import compute_eci_distance, compute_altitude_km
+from src.main.python.orbital_meca.orbits import compute_eci_distance, compute_altitude_m
 from src.main.python.utils.constants import DEFAULT_OBJECTIVES, DEFAULT_REWARD_WEIGHTS
 from typing import Callable
 
@@ -84,9 +84,9 @@ def compute_rewards(
         agent_states (Dict[str, SatelliteAgent]): Map from agent_id to SatelliteAgent.
         current_time (Time): Current time of the simulation.
         objectives (Optional[Dict[str, float]]): Thresholds expressed as plain floats with explicit units:
-            - collision_distance_km: kilometers
-            - avoid_distance_km: kilometers
-            - same_role_spacing_km: kilometers
+            - collision_distance_m: meters
+            - avoid_distance_m: meters
+            - same_role_spacing_m: meters
             - minimal_delta_v_mps: m/s
         weights (Optional[Dict[str, float]]): Weights for each reward component (dimensionless floats).
 
@@ -102,7 +102,7 @@ def compute_rewards(
 
     Unit conventions
     -----------------
-    - Distances are computed via compute_eci_distance(...) and are plain floats in kilometers.
+    - Distances are computed via compute_eci_distance(...) and are plain floats in meters.
     - Delta-v usage is obtained from SatelliteAgent as an astropy Quantity and converted to floats in m/s
       for shaping functions.
     - Shaping functions accept and return plain floats; no astropy Quantities should be passed into them.
@@ -129,13 +129,13 @@ def compute_rewards(
         w=weights["intercept_shaping"]
     )  # Interceptors distance with targets: hard minimization
 
-    target_evasion_reward_fn = objective_d_shaping_generator(objective=objectives["avoid_distance_km"], w=weights[
+    target_evasion_reward_fn = objective_d_shaping_generator(objective=objectives["avoid_distance_m"], w=weights[
         "evasion_shaping"])  # Targets distance with interceptors: soft maximization
 
-    interceptor_spacing_reward_fn = objective_d_shaping_generator(objective=objectives["same_role_spacing_km"], w=weights[
+    interceptor_spacing_reward_fn = objective_d_shaping_generator(objective=objectives["same_role_spacing_m"], w=weights[
         "interceptor_dispersion"])  # Interceptor distance with interceptors: soft maximization
 
-    target_spacing_reward_fn = objective_d_shaping_generator(objective=objectives["same_role_spacing_km"], w=weights[
+    target_spacing_reward_fn = objective_d_shaping_generator(objective=objectives["same_role_spacing_m"], w=weights[
         "target_dispersion"])  # Targets distance with targets : soft maximization
 
     fuel_penalty_fn = linear_reward_generator(
@@ -146,24 +146,24 @@ def compute_rewards(
     # Aggressively minimize distance (interceptor), softly maximize distance (target)
     for int_id, interceptor in interceptors.items():
         for tgt_id, target in targets.items():
-            dist_km = compute_eci_distance(interceptor.orbit_state, target.orbit_state)
+            dist_m = compute_eci_distance(interceptor.orbit_state, target.orbit_state)
 
-            if dist_km < objectives["collision_distance_km"]:
+            if dist_m < objectives["collision_distance_m"]:
                 flags["intercept_success"] = True
 
-            rewards[int_id] += intercept_reward_fn(dist_km)
-            rewards[tgt_id] += target_evasion_reward_fn(dist_km)
+            rewards[int_id] += intercept_reward_fn(dist_m)
+            rewards[tgt_id] += target_evasion_reward_fn(dist_m)
 
     # === Interceptor ↔ Interceptor (dispersion) ===
     # Softly maximize distance
     for id1, id2 in combinations(interceptors.keys(), 2):
         a1, a2 = interceptors[id1], interceptors[id2]
-        dist_km = compute_eci_distance(a1.orbit_state, a2.orbit_state)
+        dist_m = compute_eci_distance(a1.orbit_state, a2.orbit_state)
 
-        if dist_km < objectives["collision_distance_km"]:
+        if dist_m < objectives["collision_distance_m"]:
             flags["interceptors_coll"] = True
 
-        reward = interceptor_spacing_reward_fn(dist_km)
+        reward = interceptor_spacing_reward_fn(dist_m)
         rewards[id1] += reward
         rewards[id2] += reward
 
@@ -171,12 +171,12 @@ def compute_rewards(
     # Softly maximize distance
     for id1, id2 in combinations(targets.keys(), 2):
         a1, a2 = targets[id1], targets[id2]
-        dist_km = compute_eci_distance(a1.orbit_state, a2.orbit_state)
+        dist_m = compute_eci_distance(a1.orbit_state, a2.orbit_state)
 
-        if dist_km < objectives["collision_distance_km"]:
+        if dist_m < objectives["collision_distance_m"]:
             flags["targets_coll"] = True
 
-        reward = target_spacing_reward_fn(dist_km)
+        reward = target_spacing_reward_fn(dist_m)
         rewards[id1] += reward
         rewards[id2] += reward
 
@@ -192,8 +192,8 @@ def compute_rewards(
 
     # === Reentry termination criterium (all agents) ===
     for agent_id, agent in agent_states.items():
-        curr_alt = compute_altitude_km(agent.orbit_state)
+        curr_alt = compute_altitude_m(agent.orbit_state)
 
-        if curr_alt < objectives["reentry_altitude_km"]:
+        if curr_alt < objectives["reentry_altitude_m"]:
             flags["reentry"] = True
     return rewards, flags
