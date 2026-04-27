@@ -5,31 +5,22 @@ from typing import Any, Dict
 
 import ray
 from ray import tune
-from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.policy.policy import PolicySpec
-from ray.tune.registry import register_env
 
-from src.main.python.environment.orbital_env import OrbitalEnv
-from src.main.python.environment.scenarios import pursuit_evasion_scenario
-from src.main.python.utils.helpers import get_logger, policy_mapping_fn
+from src.main.python.utils.helpers import get_logger
 from src.main.python.utils.callbacks import OrbitalPhysicsCallbacks
+from src.main.python.utils.rllib_setup import (
+    build_policies_to_train,
+    build_policy_setup,
+    build_rllib_env_config,
+    parse_maneuver_frame,
+    register_orbital_env,
+    rllib_policy_mapping_fn,
+    run_spec_from_args,
+)
 
 # Initialize logger
 logger = get_logger("train_app", level=logging.INFO)
-SUPPORTED_MANEUVER_FRAMES = ("ECI", "TNW")
-
-
-def parse_maneuver_frame(value: str) -> str:
-    """
-    Parses the maneuver frame string, unsensitive to the case.
-    """
-    frame = str(value).strip().upper()
-    if frame not in SUPPORTED_MANEUVER_FRAMES:
-        raise argparse.ArgumentTypeError(
-            f"Unsupported maneuver frame '{value}'. Supported frames: {list(SUPPORTED_MANEUVER_FRAMES)}."
-        )
-    return frame
 
 
 def parse_args():
@@ -44,6 +35,12 @@ def parse_args():
     scenario_group.add_argument("--n-targets", type=int, default=1, help="Number of target agents.")
     scenario_group.add_argument("--timestep", type=float, default=60.0, help="Simulation timestep in seconds.")
     scenario_group.add_argument("--episode-length", type=int, default=100, help="Number of steps per episode.")
+    scenario_group.add_argument(
+        "--max-delta-v-kms",
+        type=float,
+        default=0.02,
+        help="The maximum single maneuver delta-v in km/s.",
+    )
     scenario_group.add_argument(
         "--maneuver-frame",
         type=parse_maneuver_frame,
@@ -76,11 +73,7 @@ def parse_args():
     
     return parser.parse_args()
 
-def _validate_args(args: argparse.Namespace) -> None:
-    if args.n_interceptors <= 0:
-        raise ValueError("--n-interceptors must be >= 1.")
-    if args.n_targets <= 0:
-        raise ValueError("--n-targets must be >= 1.")
+def _validate_training_args(args: argparse.Namespace) -> None:
     if args.iterations <= 0:
         raise ValueError("--iterations must be >= 1.")
     if args.batch_size <= 0:
@@ -95,97 +88,35 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--checkpoint-freq must be >= 0.")
 
 
-def _build_experiment_name(args: argparse.Namespace) -> str:
+def _build_experiment_name(args: argparse.Namespace, maneuver_frame: str) -> str:
     if args.name:
         return args.name
-    return f"ppo_{args.n_interceptors}i_{args.n_targets}t_{args.maneuver_frame.lower()}"
+    return f"ppo_{args.n_interceptors}i_{args.n_targets}t_{maneuver_frame.lower()}"
 
 
 def setup_training(args: argparse.Namespace) -> Dict[str, Any]:
     """
     Setup all that is needed for training.
     """
-    _validate_args(args)
+    _validate_training_args(args)
+    spec = run_spec_from_args(args)
 
     local_dir = os.path.abspath(os.path.expanduser(args.local_dir))
     os.makedirs(local_dir, exist_ok=True)
-    experiment_name = _build_experiment_name(args)
-
-    agent_configs = pursuit_evasion_scenario(
-        n_interceptors=args.n_interceptors,
-        n_targets=args.n_targets,
-        seed=args.seed,
+    experiment_name = _build_experiment_name(args, spec.maneuver_frame)
+    env_name = register_orbital_env()
+    policy_setup = build_policy_setup(spec)
+    policies_to_train = build_policies_to_train(
+        policy_setup["policies"].keys(),
+        freeze_targets=spec.freeze_targets,
     )
-    orbital_env_config = {
-        "timestep_sec": args.timestep,
-        "episode_length": args.episode_length,
-        "start_time": "2025-01-01 00:00:00",
-        "maneuver_frame": args.maneuver_frame,
-        "freeze_targets": args.freeze_targets,
-    }
-
-    env_name = OrbitalEnv.metadata.get("name", "orbital_env_v0")
-
-    def env_creator(config: Dict[str, Any]) -> ParallelPettingZooEnv:
-        agent_cfgs = pursuit_evasion_scenario(
-            n_interceptors=int(config["n_interceptors"]),
-            n_targets=int(config["n_targets"]),
-            seed=int(config["seed"]),
-        )
-        return ParallelPettingZooEnv(
-            OrbitalEnv(
-                agent_configs=agent_cfgs,
-                env_config=config["orbital_env_config"],
-            )
-        )
-
-    register_env(env_name, env_creator)
-
-    probe_env = OrbitalEnv(agent_configs=agent_configs, env_config=orbital_env_config)
-    interceptor_id = next((aid for aid, cfg in agent_configs.items() if cfg["role"] == "interceptor"), None)
-    target_id = next((aid for aid, cfg in agent_configs.items() if cfg["role"] == "target"), None)
-
-    policies: Dict[str, PolicySpec] = {}
-    interceptor_obs_space = None
-    target_obs_space = None
-
-    if interceptor_id is not None:
-        interceptor_obs_space = probe_env.observation_space(interceptor_id)
-        interceptor_act_space = probe_env.action_space(interceptor_id)
-        policies["interceptor_policy"] = PolicySpec(
-            observation_space=interceptor_obs_space,
-            action_space=interceptor_act_space,
-        )
-
-    if target_id is not None:
-        target_obs_space = probe_env.observation_space(target_id)
-        target_act_space = probe_env.action_space(target_id)
-        policies["target_policy"] = PolicySpec(
-            observation_space=target_obs_space,
-            action_space=target_act_space,
-        )
-
-    if not policies:
-        raise ValueError("No policies were created. Check scenario agent configuration.")
-
-    policies_to_train = [policy_id for policy_id in policies.keys() if policy_id != "target_policy" or not args.freeze_targets]
-    if not policies_to_train:
-        policies_to_train = list(policies.keys())
-
-    def rllib_policy_mapping_fn(agent_id: str, *unused_args: Any, **unused_kwargs: Any) -> str:
-        return policy_mapping_fn(agent_id)
 
     config = (
         PPOConfig()
         .framework("torch")
         .environment(
             env=env_name,
-            env_config={
-                "n_interceptors": args.n_interceptors,
-                "n_targets": args.n_targets,
-                "seed": args.seed,
-                "orbital_env_config": orbital_env_config,
-            },
+            env_config=build_rllib_env_config(spec),
             disable_env_checking=True,
         )
         .env_runners(num_env_runners=args.num_workers, rollout_fragment_length="auto")
@@ -199,7 +130,7 @@ def setup_training(args: argparse.Namespace) -> Dict[str, Any]:
         .debugging(seed=args.seed, log_level="INFO")
         .callbacks(OrbitalPhysicsCallbacks)
         .multi_agent(
-            policies=policies,
+            policies=policy_setup["policies"],
             policy_mapping_fn=rllib_policy_mapping_fn,
             policies_to_train=policies_to_train,
         )
@@ -207,12 +138,12 @@ def setup_training(args: argparse.Namespace) -> Dict[str, Any]:
 
     return {
         "args": args,
+        "spec": spec,
         "local_dir": local_dir,
         "experiment_name": experiment_name,
-        "env_name": env_name,
         "config": config,
-        "interceptor_obs_space": interceptor_obs_space,
-        "target_obs_space": target_obs_space,
+        "interceptor_obs_space": policy_setup["interceptor_obs_space"],
+        "target_obs_space": policy_setup["target_obs_space"],
         "results_dir": os.path.join(local_dir, experiment_name),
     }
 
@@ -267,12 +198,13 @@ def main():
     training_ctx = {}
     try:
         training_ctx = setup_training(args)
+        spec = training_ctx["spec"]
     
-        logger.info(f"Initialized training with {args.n_interceptors} interceptors and {args.n_targets} targets.")
+        logger.info(f"Initialized training with {spec.n_interceptors} interceptors and {spec.n_targets} targets.")
         logger.info(f"Interceptor Obs Space: {training_ctx['interceptor_obs_space']}")
         logger.info(f"Target Obs Space: {training_ctx['target_obs_space']}")
-        logger.info(f"Maneuver frame: {args.maneuver_frame}")
-        logger.info(f"Targets maneuvering disabled: {args.freeze_targets}")
+        logger.info(f"Maneuver frame: {spec.maneuver_frame}")
+        logger.info(f"Targets maneuvering disabled: {spec.freeze_targets}")
     
         logger.info(f"Results will be saved to: {training_ctx['results_dir']}")
 
