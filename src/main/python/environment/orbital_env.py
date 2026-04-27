@@ -2,9 +2,11 @@ from pettingzoo import ParallelEnv
 from gymnasium.spaces import Box
 import numpy as np
 from astropy.time import Time, TimeDelta
+from astropy import units as u
 
 from src.main.python.agents.satellite_agent import SatelliteAgent
 from src.main.python.environment.reward_engine import compute_rewards
+from src.main.python.orbital_meca.orbits import compute_eci_distance
 from src.main.python.utils.random import set_global_seed
 
 SUPPORTED_MANEUVER_FRAMES = {"ECI", "TNW"}
@@ -249,6 +251,35 @@ class OrbitalEnv(ParallelEnv):
             shape=(3,),
             dtype=np.float32,
         )
+
+    def get_position_km(self, agent_id: str) -> np.ndarray:
+        """
+        Return the current ECI position of one agent in kilometers.
+        """
+        r, _ = self._agent_states[agent_id].orbit_state.get_rv()
+        return np.asarray(r.to_value(u.km), dtype=float)
+
+    def get_remaining_delta_v_kms(self, agent_id: str) -> float:
+        """
+        Return the current remaining delta-v budget of one agent in km/s.
+        """
+        return float(self._agent_states[agent_id].get_remaining_delta_v().to_value(u.km / u.s))
+
+    def get_pairwise_distances_km(self) -> dict:
+        """
+        Return pairwise distances between all current agents in kilometers.
+        """
+        distances = {}
+        agent_ids = list(self.agents)
+        for i, aid in enumerate(agent_ids):
+            for bid in agent_ids[i + 1 :]:
+                distances[f"{aid}__{bid}"] = float(
+                    compute_eci_distance(
+                        self._agent_states[aid].orbit_state,
+                        self._agent_states[bid].orbit_state,
+                    )
+                )
+        return distances
 
     def render(self):
         """
