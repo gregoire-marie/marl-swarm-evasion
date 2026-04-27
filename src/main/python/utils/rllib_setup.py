@@ -17,8 +17,7 @@ from src.main.python.utils.helpers import policy_mapping_fn
 
 SUPPORTED_MANEUVER_FRAMES = ("ECI", "TNW")
 DEFAULT_START_TIME = "2025-01-01 00:00:00"
-DEFAULT_MAX_DELTA_V_KMS = 0.02
-LEGACY_ENV_DEFAULT_MAX_DELTA_V_KMS = 0.1
+DEFAULT_MAX_DELTA_V_MPS = 20.0
 
 
 @dataclass(frozen=True)
@@ -28,7 +27,7 @@ class OrbitalRunSpec:
     timestep: float = 60.0
     episode_length: int = 100
     start_time: str = DEFAULT_START_TIME
-    max_delta_v_kms: float = DEFAULT_MAX_DELTA_V_KMS
+    max_delta_v_mps: float = DEFAULT_MAX_DELTA_V_MPS
     maneuver_frame: str = "ECI"
     freeze_targets: bool = False
     seed: int = 42
@@ -51,8 +50,8 @@ def validate_run_spec(spec: OrbitalRunSpec) -> OrbitalRunSpec:
         raise ValueError("--n-targets must be >= 1.")
     if normalized_spec.episode_length <= 0:
         raise ValueError("--episode-length must be >= 1.")
-    if normalized_spec.max_delta_v_kms <= 0:
-        raise ValueError("--max-delta-v-kms must be > 0.")
+    if normalized_spec.max_delta_v_mps <= 0:
+        raise ValueError("--max-delta-v-mps must be > 0.")
     if normalized_spec.timestep <= 0:
         raise ValueError("--timestep must be > 0.")
     return normalized_spec
@@ -79,9 +78,7 @@ def run_spec_from_rllib_env_config(env_config: Optional[Mapping[str, Any]]) -> O
             timestep=float(orbital_env_config.get("timestep_sec", 60.0)),
             episode_length=int(orbital_env_config.get("episode_length", 100)),
             start_time=str(orbital_env_config.get("start_time", DEFAULT_START_TIME)),
-            # Older checkpoints may not store this field and relied on OrbitalEnv's
-            # internal default instead.
-            max_delta_v_kms=float(orbital_env_config.get("max_delta_v_kms", LEGACY_ENV_DEFAULT_MAX_DELTA_V_KMS)),
+            max_delta_v_mps=float(orbital_env_config.get("max_delta_v_mps", DEFAULT_MAX_DELTA_V_MPS)),
             maneuver_frame=str(orbital_env_config.get("maneuver_frame", "ECI")),
             freeze_targets=bool(orbital_env_config.get("freeze_targets", False)),
             seed=int(config.get("seed", 42)),
@@ -102,7 +99,7 @@ def build_orbital_env_config(spec: OrbitalRunSpec) -> Dict[str, Any]:
         "timestep_sec": spec.timestep,
         "episode_length": spec.episode_length,
         "start_time": spec.start_time,
-        "max_delta_v_kms": spec.max_delta_v_kms,
+        "max_delta_v_mps": spec.max_delta_v_mps,
         "maneuver_frame": spec.maneuver_frame,
         "freeze_targets": spec.freeze_targets,
     }

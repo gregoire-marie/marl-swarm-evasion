@@ -27,7 +27,7 @@ def default_orbit_far():
         0 * u.deg, 0 * u.deg, 210 * u.deg  # Further apart to avoid false positives
     )
 
-def default_agent(agent_id, role, orbit, epoch, delta_v=1.0 * u.km / u.s):
+def default_agent(agent_id, role, orbit, epoch, delta_v=1000.0 * u.m / u.s):
     config = {
         "role": role,
         "init_orbit": orbit,
@@ -111,12 +111,12 @@ def test_interceptor_collision(default_epoch, default_orbit_near):
 
 def test_fuel_penalty_and_no_fuel(default_epoch, default_orbit_near):
     agent = default_agent("s1", "target", default_orbit_near, default_epoch)
-    agent.used_delta_v = 1.5 * u.km / u.s
+    agent.used_delta_v = 1500.0 * u.m / u.s
 
     rewards, flags = compute_rewards({"s1": agent}, default_epoch)
 
     assert flags["no_fuel"]
-    expected = DEFAULT_REWARD_WEIGHTS["fuel_penalty"] * 1.5
+    expected = DEFAULT_REWARD_WEIGHTS["fuel_penalty"] * 1500.0
     assert np.isclose(rewards["s1"], expected, rtol=1e-2)
 
 
@@ -125,9 +125,9 @@ def test_mixed_constellation_flags_and_rewards(default_epoch, default_orbit_near
     i2 = default_agent("i2", "interceptor", default_orbit_far, default_epoch)
     t1 = default_agent("t1", "target", default_orbit_far, default_epoch)
 
-    i1.used_delta_v = 0.2 * u.km / u.s
-    i2.used_delta_v = 0.1 * u.km / u.s
-    t1.used_delta_v = 0.5 * u.km / u.s
+    i1.used_delta_v = 200.0 * u.m / u.s
+    i2.used_delta_v = 100.0 * u.m / u.s
+    t1.used_delta_v = 500.0 * u.m / u.s
 
     agents = {"i1": i1, "i2": i2, "t1": t1}
     rewards, flags = compute_rewards(agents, default_epoch)

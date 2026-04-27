@@ -99,25 +99,25 @@ class OrbitState:
         """
         Convert a TNW-frame vector to ECI components at current epoch.
         """
-        dv_tnw_kms = np.asarray(dv_vector_tnw.to_value(u.km / u.s), dtype=float)
-        if dv_tnw_kms.shape != (3,):
-            raise ValueError(f"TNW vector must have shape (3,), got {dv_tnw_kms.shape}.")
+        dv_tnw_mps = np.asarray(dv_vector_tnw.to_value(u.m / u.s), dtype=float)
+        if dv_tnw_mps.shape != (3,):
+            raise ValueError(f"TNW vector must have shape (3,), got {dv_tnw_mps.shape}.")
 
         basis = self._get_tnw_basis_matrix()
-        dv_eci_kms = basis @ dv_tnw_kms
-        return dv_eci_kms * u.km / u.s
+        dv_eci_mps = basis @ dv_tnw_mps
+        return dv_eci_mps * u.m / u.s
 
     def eci_to_tnw(self, dv_vector_eci: Quantity) -> Quantity:
         """
         Convert an ECI-frame vector to TNW components at current epoch.
         """
-        dv_eci_kms = np.asarray(dv_vector_eci.to_value(u.km / u.s), dtype=float)
-        if dv_eci_kms.shape != (3,):
-            raise ValueError(f"ECI vector must have shape (3,), got {dv_eci_kms.shape}.")
+        dv_eci_mps = np.asarray(dv_vector_eci.to_value(u.m / u.s), dtype=float)
+        if dv_eci_mps.shape != (3,):
+            raise ValueError(f"ECI vector must have shape (3,), got {dv_eci_mps.shape}.")
 
         basis = self._get_tnw_basis_matrix()
-        dv_tnw_kms = basis.T @ dv_eci_kms
-        return dv_tnw_kms * u.km / u.s
+        dv_tnw_mps = basis.T @ dv_eci_mps
+        return dv_tnw_mps * u.m / u.s
 
     def _build_orbit_from_elements(self, elements, epoch: Time) -> Orbit:
         """
@@ -165,7 +165,7 @@ class OrbitState:
         Apply an instantaneous delta-v at a given epoch.
 
         Args:
-            dv_vector (Quantity[km/s]): 3D delta-v vector in maneuver frame.
+            dv_vector (Quantity[m/s]): 3D delta-v vector in maneuver frame.
             time (Time): Time at which the delta-v is applied.
             maneuver_frame (str): Local frame for dv_vector, "ECI" or "TNW".
 
@@ -177,15 +177,15 @@ class OrbitState:
 
         frame = self._normalize_maneuver_frame(maneuver_frame)
         if hasattr(dv_vector, "to"):
-            dv_input = dv_vector.to(u.km / u.s)
+            dv_input = dv_vector.to(u.m / u.s)
         else:
-            dv_input = np.asarray(dv_vector, dtype=float) * u.km / u.s
-        dv_values = np.asarray(dv_input.to_value(u.km / u.s), dtype=float)
+            dv_input = np.asarray(dv_vector, dtype=float) * u.m / u.s
+        dv_values = np.asarray(dv_input.to_value(u.m / u.s), dtype=float)
         if dv_values.shape != (3,):
             raise ValueError(
                 f"Delta-v vector must have shape (3,) in {frame} frame, got {dv_values.shape}."
             )
-        dv_input = dv_values * u.km / u.s
+        dv_input = dv_values * u.m / u.s
 
         if frame == "TNW":
             dv_eci = self.tnw_to_eci(dv_input)

@@ -28,7 +28,7 @@ def test_compute_instantaneous_delta_v_shapes_and_units():
 
     # Vector units and shape
     assert hasattr(dv_vec, "unit")
-    assert dv_vec.unit == (u.km / u.s)
+    assert dv_vec.unit == (u.m / u.s)
     assert dv_vec.shape == (3,)
 
     # Magnitude units

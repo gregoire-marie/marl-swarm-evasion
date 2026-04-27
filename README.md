@@ -53,15 +53,15 @@ This project standardizes physical units, angles, and time across the codebase f
 
 - Units and types
   - Internals use astropy quantities (Quantity) end-to-end.
-  - Distances are in kilometers (km); velocities and Δv in kilometers per second (km/s).
+  - Distances are in kilometers (km); orbital velocities are in kilometers per second (km/s); Δv is in meters per second (m/s).
   - Angles use mean anomaly M in the public API; internally conversions may use true anomaly ν.
   - Time is handled with astropy.time (Time, TimeDelta). Avoid naive datetime.
   - At RL edges (actions/observations), values are plain numpy float arrays. Convert with .to_value(...) at boundaries.
 
 - Actions
-  - 3D delta-v maneuver vectors in the `ECI` or `TNW` frame (km/s).
+  - 3D delta-v maneuver vectors in the `ECI` or `TNW` frame (m/s).
   - In `TNW` mode, actions are converted to ECI at burn epoch before propagation.
-  - Magnitudes are clipped by `env_config["max_delta_v_kms"]`.
+  - Magnitudes are clipped by `env_config["max_delta_v_mps"]`.
 
 - Observations
   - Flat float vectors containing Keplerian elements and derived scalars (e.g., remaining Δv, pairwise distances).
@@ -117,6 +117,7 @@ uv run python app/train.py [OPTIONS]
 | `--n-targets` | int | 1                                          | Number of target agents.                                                                                                                                                 |
 | `--timestep` | float | 60.0                                       | Simulation timestep in seconds.                                                                                                                                          |
 | `--episode-length` | int | 100                                        | Maximum number of steps per episode (any collision causes an early termination).                                                                                         |
+| `--max-delta-v-mps` | float | 20.0                                       | Maximum single-maneuver delta-v in m/s.                                                                                                                                  |
 | `--maneuver-frame` | str | `eci`                                      | Maneuver frame used for actions: `eci` or `tnw`.                                                                                                                         |
 | `--freeze-targets` | flag | -                                          | Force targets to apply zero Δv at each step.                                                                                                                             |
 | **Training** | |                                            |                                                                                                                                                                          |
@@ -167,7 +168,7 @@ In the TensorBoard dashboard, you will find several categories of metrics:
     *   `intercept_success_rate`: Percentage of episodes where an interceptor successfully reached a target.
     *   `interceptors_collision_rate`: Rate of collisions between interceptors.
     *   `targets_collision_rate`: Rate of collisions between targets.
-    *   `out_of_fuel_rate`: Percentage of episodes ending because agents ran out of Δv.
+    *   `out_of_fuel_rate`: Percentage of episodes ending because agents ran out of Δv budget.
     *   `reentry_rate`: Percentage of episodes ending because agents reentered the atmosphere.
     *   `episode_steps`: Average number of steps per episode (shorter episodes often indicate early collisions or successes).
 
@@ -194,6 +195,7 @@ uv run python app/infer.py checkpoint --n-interceptors 1 --n-targets 1 --episode
 | `--n-targets` | int | 1                       | Number of target agents.                              |
 | `--timestep` | float | 60.0                    | Simulation timestep in seconds.                       |
 | `--episode-length` | int | 100                     | Number of steps per episode.                          |
+| `--max-delta-v-mps` | float | 20.0                    | Maximum single-maneuver delta-v in m/s.              |
 | `--maneuver-frame` | str | `eci`                   | Maneuver frame used for actions: `eci` or `tnw`.      |
 | `--seed` | int | 42                      | Random seed for the scenario.                         |
 | `--out-dir` | str | `$checkpoint/inference` | Directory to save generated plots.                    |

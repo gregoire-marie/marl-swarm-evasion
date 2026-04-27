@@ -24,9 +24,9 @@ class OrbitalEnv(ParallelEnv):
     Unit conventions
     ----------------
     - External RL interface (actions/observations): plain numpy float arrays
-      • Actions are delta-v components in km/s (floats)
+      • Actions are delta-v components in m/s (floats)
       • Observations are unitless float vectors built from Keplerian elements (converted to floats),
-        remaining Δv (km/s), and pairwise distances (km)
+        remaining Δv (m/s), and pairwise distances (km)
     - Internals (physics): astropy.units.Quantity is used end-to-end for positions, velocities,
       angles, time, and Δv. Conversions to floats happen only at the API edges for RL.
 
@@ -37,7 +37,7 @@ class OrbitalEnv(ParallelEnv):
         env_config (dict): Configuration for timestep, episode duration, etc.
         timestep (TimeDelta): Time interval between simulation steps.
         episode_length (int): Number of steps per episode.
-        max_delta_v (float): Maximum delta-v magnitude allowed per step [km/s].
+        max_delta_v (float): Maximum delta-v magnitude allowed per step [m/s].
         _current_time (Time): Current simulation time.
         _step_count (int): Current simulation step index.
         _agent_states (dict): Mapping of agent_id → SatelliteAgent instance.
@@ -62,12 +62,12 @@ class OrbitalEnv(ParallelEnv):
                 - "role" (str): "interceptor" or "target".
                 - "init_orbit" (tuple): Classical elements (a, e, i, RAAN, argp, M) as astropy Quantities
                   with units [km, one, deg, deg, deg, deg].
-                - "init_delta_v" (float or Quantity): Initial Δv budget. If float, interpreted as km/s.
+                - "init_delta_v" (float or Quantity): Initial Δv budget. If float, interpreted as m/s.
             env_config (dict): Environment parameters including:
                 - "timestep_sec" (float): Time step in seconds.
                 - "episode_length" (int): Maximum number of steps per episode.
                 - "start_time" (str): ISO date for simulation start (UTC).
-                - "max_delta_v_kms" (float): Max delta-v allowed per action (in km/s).
+                - "max_delta_v_mps" (float): Max delta-v allowed per action (in m/s).
                 - "maneuver_frame" (str): Maneuver frame for actions, "ECI" or "TNW".
         """
         self.agents = list(agent_configs.keys())
@@ -77,7 +77,7 @@ class OrbitalEnv(ParallelEnv):
 
         self.timestep = TimeDelta(env_config.get("timestep_sec", 10), format="sec")
         self.episode_length = env_config.get("episode_length", 1000)
-        self.max_delta_v = env_config.get("max_delta_v_kms", 0.1)  # km/s
+        self.max_delta_v = env_config.get("max_delta_v_mps", 100.0)  # m/s
         self.maneuver_frame = str(env_config.get("maneuver_frame", "ECI")).strip().upper()
         if self.maneuver_frame not in SUPPORTED_MANEUVER_FRAMES:
             raise ValueError(
@@ -139,7 +139,7 @@ class OrbitalEnv(ParallelEnv):
         Advance the simulation one timestep using agents' delta-v actions.
 
         Args:
-            actions (dict): Mapping from agent_id → 3D np.ndarray delta-v (in km/s, floats).
+            actions (dict): Mapping from agent_id → 3D np.ndarray delta-v (in m/s, floats).
 
         Returns:
             Tuple:
@@ -241,7 +241,7 @@ class OrbitalEnv(ParallelEnv):
             agent_id (str): Agent identifier.
 
         Returns:
-            gymnasium.spaces.Box: Bounded 3D continuous action space [km/s].
+            gymnasium.spaces.Box: Bounded 3D continuous action space [m/s].
         """
         # 3D delta-v vector in selected maneuver frame, bounded by max delta-v
         max_dv = np.float32(self.max_delta_v)
@@ -259,11 +259,11 @@ class OrbitalEnv(ParallelEnv):
         r, _ = self._agent_states[agent_id].orbit_state.get_rv()
         return np.asarray(r.to_value(u.km), dtype=float)
 
-    def get_remaining_delta_v_kms(self, agent_id: str) -> float:
+    def get_remaining_delta_v_mps(self, agent_id: str) -> float:
         """
-        Return the current remaining delta-v budget of one agent in km/s.
+        Return the current remaining delta-v budget of one agent in m/s.
         """
-        return float(self._agent_states[agent_id].get_remaining_delta_v().to_value(u.km / u.s))
+        return float(self._agent_states[agent_id].get_remaining_delta_v().to_value(u.m / u.s))
 
     def get_pairwise_distances_km(self) -> dict:
         """

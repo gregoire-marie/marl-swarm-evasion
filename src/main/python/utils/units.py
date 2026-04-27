@@ -6,7 +6,8 @@ Unit guardrails and helpers.
 This module centralizes thin wrappers around Astropy to enforce canonical units
 across the codebase, as per the project guidelines:
  - Distances in km
- - Velocities (Δv) in km/s
+ - Orbital velocities in km/s
+ - Delta-v in m/s
  - Angles in degrees externally; radians for internal unwrapped arrays
  - Time handled by astropy.time (Time/TimeDelta)
 
@@ -28,7 +29,7 @@ def ensure_quantity(value: Any, unit: u.UnitBase) -> u.Quantity:
     value : Any
         Either a float/int or astropy Quantity.
     unit : astropy Unit
-        Target unit (e.g., u.km, u.km / u.s).
+        Target unit (e.g., u.km, u.m / u.s).
 
     Returns
     -------
@@ -53,9 +54,9 @@ def to_km(x: Any) -> u.Quantity:
     return ensure_quantity(x, u.km)
 
 
-def to_kms(x: Any) -> u.Quantity:
-    """Return value as Quantity in kilometers per second (km/s)."""
-    return ensure_quantity(x, u.km / u.s)
+def to_mps(x: Any) -> u.Quantity:
+    """Return value as Quantity in meters per second (m/s)."""
+    return ensure_quantity(x, u.m / u.s)
 
 
 def to_deg(x: Any) -> u.Quantity:

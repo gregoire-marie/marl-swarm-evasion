@@ -16,7 +16,7 @@ Usage examples:
 
 Notes:
   - Distance unit is kilometers on the X axis for distance plots.
-  - Δv unit is km/s on the X axis for the fuel plot.
+  - Δv unit is m/s on the X axis for the fuel plot.
   - The objective dist./zero dist. shaping functions saturate or have asymptotic behavior; the
     plots include helpful reference lines to appreciate these shapes.
 """
@@ -60,7 +60,7 @@ def parse_args():
     parser.add_argument("--logx", action="store_true", help="Use logarithmic X scale for distance plots.")
 
     # Fuel grid
-    parser.add_argument("--dv_max", type=float, default=5.0, help="Max Δv used (km/s) for fuel plot.")
+    parser.add_argument("--dv_max", type=float, default=5000.0, help="Max Δv used (m/s) for fuel plot.")
 
     args = parser.parse_args()
     return args
@@ -170,7 +170,7 @@ def main(version):
     ax.plot(dv_used, y_fuel, label=f"fuel penalty (w={DEFAULT_REWARD_WEIGHTS['fuel_penalty']:g})", color="#ff7f0e")
     ax.axvline(0.0, color="k", lw=1)
     ax.set_title("Fuel usage penalty — linear in Δv used")
-    ax.set_xlabel("Δv used (km/s)")
+    ax.set_xlabel("Δv used (m/s)")
     ax.set_ylabel("reward (penalty if w<0)")
     ax.grid(True, ls=":", alpha=0.6)
     ax.legend()

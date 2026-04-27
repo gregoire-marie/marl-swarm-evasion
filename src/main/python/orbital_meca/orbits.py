@@ -28,7 +28,7 @@ def compute_instantaneous_delta_v(
     Returns
     -------
     delta_v_vector : astropy.units.Quantity
-        Velocity difference vector [km/s] from A to B at burn point.
+        Velocity difference vector [m/s] from A to B at burn point.
     delta_v_magnitude : astropy.units.Quantity
         Scalar magnitude of delta-v [m/s].
     """
@@ -54,12 +54,11 @@ def compute_instantaneous_delta_v(
     _, vB = orbB.rv()
 
     # Compute delta-v vector and magnitude
-    delta_v_vector = vB - vA  # Quantity[km/s], shape (3,)
+    delta_v_vector = vB - vA
     # Use numpy norm for robust behavior across astropy versions
-    dv_mag_kms = np.linalg.norm(delta_v_vector.to_value(u.km / u.s)) * u.km / u.s
-    delta_v_magnitude = dv_mag_kms.to(u.m / u.s)
+    delta_v_magnitude = np.linalg.norm(delta_v_vector.to_value(u.m / u.s)) * u.m / u.s
 
-    return delta_v_vector.to(u.km / u.s), delta_v_magnitude
+    return delta_v_vector.to(u.m / u.s), delta_v_magnitude
 
 
 def compute_eci_distance(state_a, state_b):

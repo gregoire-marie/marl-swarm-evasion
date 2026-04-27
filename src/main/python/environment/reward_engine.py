@@ -87,7 +87,7 @@ def compute_rewards(
             - collision_distance_km: kilometers
             - avoid_distance_km: kilometers
             - same_role_spacing_km: kilometers
-            - minimal_delta_v_kms: km/s
+            - minimal_delta_v_mps: m/s
         weights (Optional[Dict[str, float]]): Weights for each reward component (dimensionless floats).
 
     Returns:
@@ -103,7 +103,7 @@ def compute_rewards(
     Unit conventions
     -----------------
     - Distances are computed via compute_eci_distance(...) and are plain floats in kilometers.
-    - Delta-v usage is obtained from SatelliteAgent as an astropy Quantity and converted to floats in km/s
+    - Delta-v usage is obtained from SatelliteAgent as an astropy Quantity and converted to floats in m/s
       for shaping functions.
     - Shaping functions accept and return plain floats; no astropy Quantities should be passed into them.
     """
@@ -182,10 +182,10 @@ def compute_rewards(
 
     # === Fuel usage penalty (all agents) ===
     for agent_id, agent in agent_states.items():
-        dv_used = agent.get_used_delta_v().to_value(u.km / u.s)
-        remaining_dv = agent.get_remaining_delta_v().to_value(u.km / u.s)
+        dv_used = agent.get_used_delta_v().to_value(u.m / u.s)
+        remaining_dv = agent.get_remaining_delta_v().to_value(u.m / u.s)
 
-        if remaining_dv < objectives["minimal_delta_v_kms"]:
+        if remaining_dv < objectives["minimal_delta_v_mps"]:
             flags["no_fuel"] = True
 
         rewards[agent_id] += fuel_penalty_fn(dv_used)

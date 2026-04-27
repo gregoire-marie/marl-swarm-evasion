@@ -12,9 +12,9 @@ A_SCALE = 1000.0
 # Using 1000km as a reference scale.
 DIST_SCALE = 1000.0
 
-# Fuel: remaining delta-v. 
-# Using 10.0 km/s as a typical max value if not provided.
-FUEL_SCALE = 10.0
+# Fuel: remaining delta-v.
+# Using 10,000 m/s as a typical max value if not provided.
+FUEL_SCALE = 10000.0
 
 def normalize_angle(angle_rad):
     """Wrap angle to [-pi, pi] and normalize to [-1, 1]."""

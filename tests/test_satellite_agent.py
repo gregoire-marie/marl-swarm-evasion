@@ -23,7 +23,7 @@ def test_initialization():
     config = {
         "role": "interceptor",
         "init_orbit": get_sample_elements(),
-        "init_delta_v": 10.0
+        "init_delta_v": 10000.0
     }
 
     agent = SatelliteAgent("agent_0", config, epoch)
@@ -34,7 +34,7 @@ def test_initialization():
 
     dv_total = agent.get_used_delta_v()
     assert isinstance(dv_total, u.Quantity)
-    assert dv_total.unit == u.km / u.s
+    assert dv_total.unit == u.m / u.s
     assert dv_total.to_value() == 0.0  # Should be 0 at init
 
 
@@ -44,7 +44,7 @@ def test_propagation_and_action():
     config = {
         "role": "interceptor",
         "init_orbit": get_sample_elements(),
-        "init_delta_v": 10.0
+        "init_delta_v": 10000.0
     }
 
     agent = SatelliteAgent("agent_1", config, epoch)
@@ -63,12 +63,12 @@ def test_propagation_and_action():
     assert delta_r > 0.1, f"Expected non-zero position change, got {delta_r:.6f} km"
 
     # Apply Δv
-    dv_vec = np.array([0.01, 0.0, 0.0], dtype=np.float32)
+    dv_vec = np.array([10.0, 0.0, 0.0], dtype=np.float32)
     agent.apply_action(dv_vec, future_time)
 
     # Check new velocity magnitude
     r2, v2 = agent.orbit_state.get_rv()
-    dv_applied = np.linalg.norm((v2 - v1).to_value(u.km / u.s))
+    dv_applied = np.linalg.norm((v2 - v1).to_value(u.m / u.s))
     expected_dv = np.linalg.norm(dv_vec)
 
     assert np.isclose(dv_applied, expected_dv, rtol=1e-6), (
@@ -76,7 +76,7 @@ def test_propagation_and_action():
     )
 
     # Check cumulative Δv updated
-    dv_total = agent.get_used_delta_v().to_value(u.km / u.s)
+    dv_total = agent.get_used_delta_v().to_value(u.m / u.s)
     assert np.isclose(dv_total, expected_dv, rtol=1e-6)
 
 
@@ -85,7 +85,7 @@ def test_action_in_tnw_frame():
     config = {
         "role": "interceptor",
         "init_orbit": get_sample_elements(),
-        "init_delta_v": 10.0,
+        "init_delta_v": 10000.0,
     }
     agent = SatelliteAgent("agent_tnw", config, epoch)
 
@@ -93,16 +93,16 @@ def test_action_in_tnw_frame():
     agent.propagate_to(burn_time)
     _, v_before = agent.orbit_state.get_rv()
 
-    dv_tnw = np.array([0.006, -0.002, 0.001], dtype=np.float32)
-    dv_eci_expected = agent.orbit_state.tnw_to_eci(dv_tnw * u.km / u.s)
+    dv_tnw = np.array([6.0, -2.0, 1.0], dtype=np.float32)
+    dv_eci_expected = agent.orbit_state.tnw_to_eci(dv_tnw * u.m / u.s)
 
     agent.apply_action(dv_tnw, burn_time, maneuver_frame="TNW")
     _, v_after = agent.orbit_state.get_rv()
 
-    dv_measured = (v_after - v_before).to_value(u.km / u.s)
-    assert np.allclose(dv_measured, dv_eci_expected.to_value(u.km / u.s), atol=1e-8)
+    dv_measured = (v_after - v_before).to_value(u.m / u.s)
+    assert np.allclose(dv_measured, dv_eci_expected.to_value(u.m / u.s), atol=1e-5)
 
-    used_dv = agent.get_used_delta_v().to_value(u.km / u.s)
+    used_dv = agent.get_used_delta_v().to_value(u.m / u.s)
     assert np.isclose(used_dv, np.linalg.norm(dv_tnw), rtol=1e-6)
 
 
@@ -111,7 +111,7 @@ def test_action_in_tnw_frame_accepts_quantity_input():
     config = {
         "role": "interceptor",
         "init_orbit": get_sample_elements(),
-        "init_delta_v": 10.0,
+        "init_delta_v": 10000.0,
     }
     agent = SatelliteAgent("agent_tnw_qty", config, epoch)
 
@@ -119,14 +119,14 @@ def test_action_in_tnw_frame_accepts_quantity_input():
     agent.propagate_to(burn_time)
     _, v_before = agent.orbit_state.get_rv()
 
-    dv_tnw = np.array([0.004, 0.001, -0.002]) * u.km / u.s
+    dv_tnw = np.array([4.0, 1.0, -2.0]) * u.m / u.s
     dv_eci_expected = agent.orbit_state.tnw_to_eci(dv_tnw)
 
     agent.apply_action(dv_tnw, burn_time, maneuver_frame="TNW")
     _, v_after = agent.orbit_state.get_rv()
 
-    dv_measured = (v_after - v_before).to_value(u.km / u.s)
-    assert np.allclose(dv_measured, dv_eci_expected.to_value(u.km / u.s), atol=1e-8)
+    dv_measured = (v_after - v_before).to_value(u.m / u.s)
+    assert np.allclose(dv_measured, dv_eci_expected.to_value(u.m / u.s), atol=1e-5)
 
 
 def test_action_rejects_invalid_shape():
@@ -134,15 +134,15 @@ def test_action_rejects_invalid_shape():
     config = {
         "role": "interceptor",
         "init_orbit": get_sample_elements(),
-        "init_delta_v": 10.0,
+        "init_delta_v": 10000.0,
     }
     agent = SatelliteAgent("agent_bad_shape", config, epoch)
 
     with np.testing.assert_raises(ValueError):
-        agent.apply_action(np.array([0.01, 0.0], dtype=np.float32), epoch, maneuver_frame="ECI")
+        agent.apply_action(np.array([10.0, 0.0], dtype=np.float32), epoch, maneuver_frame="ECI")
 
     with np.testing.assert_raises(ValueError):
-        agent.apply_action(np.array([0.01, 0.0], dtype=np.float32), epoch, maneuver_frame="TNW")
+        agent.apply_action(np.array([10.0, 0.0], dtype=np.float32), epoch, maneuver_frame="TNW")
 
 
 def test_observation_vector():
@@ -151,12 +151,12 @@ def test_observation_vector():
     config_0 = {
         "role": "target",
         "init_orbit": get_sample_elements(),
-        "init_delta_v": 10.0
+        "init_delta_v": 10000.0
     }
     config_1 = {
         "role": "interceptor",
         "init_orbit": get_sample_elements(),
-        "init_delta_v": 10.0
+        "init_delta_v": 10000.0
     }
 
     agent_0 = SatelliteAgent("agent_0", config_0, epoch)
@@ -193,7 +193,7 @@ def test_observation_v1_and_summary():
     config = {
         "role": "target",
         "init_orbit": get_sample_elements(),
-        "init_delta_v": 10.0
+        "init_delta_v": 10000.0
     }
     agent = SatelliteAgent("agent_0", config, epoch)
     other_agent = SatelliteAgent("agent_1", config, epoch)
