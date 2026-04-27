@@ -222,10 +222,10 @@ class OrbitalEnv(ParallelEnv):
         obs_dim = 7 * num_agents
 
         return Box(
-            low=-10.0,
-            high=10.0,
+            low=np.full((obs_dim,), -10.0, dtype=np.float32),
+            high=np.full((obs_dim,), 10.0, dtype=np.float32),
             shape=(obs_dim,),
-            dtype=np.float32
+            dtype=np.float32,
         )
 
     def action_space(self, agent_id):
@@ -242,10 +242,13 @@ class OrbitalEnv(ParallelEnv):
             gymnasium.spaces.Box: Bounded 3D continuous action space [km/s].
         """
         # 3D delta-v vector in selected maneuver frame, bounded by max delta-v
-        return Box(low=-self.max_delta_v,
-                   high=self.max_delta_v,
-                   shape=(3,),
-                   dtype=np.float32)
+        max_dv = np.float32(self.max_delta_v)
+        return Box(
+            low=np.full((3,), -max_dv, dtype=np.float32),
+            high=np.full((3,), max_dv, dtype=np.float32),
+            shape=(3,),
+            dtype=np.float32,
+        )
 
     def render(self):
         """
