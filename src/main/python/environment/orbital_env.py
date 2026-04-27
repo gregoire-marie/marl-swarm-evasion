@@ -89,6 +89,12 @@ class OrbitalEnv(ParallelEnv):
         self._agent_states = {}  # agent_id -> SatelliteAgent
         self._seed = None
 
+    def _sanitize_observation(self, obs: np.ndarray) -> np.ndarray:
+        """
+        Cast observations to match the declared observation-space dtype.
+        """
+        return np.asarray(obs, dtype=np.float32)
+
     def reset(self, seed=None, options=None):
         """
         Reset the environment to its initial state and time.
@@ -117,10 +123,10 @@ class OrbitalEnv(ParallelEnv):
             for agent_id, config in self.agent_configs.items()
         }
 
-        observations = {
-            agent_id: agent.get_observation(self._agent_states)
-            for agent_id, agent in self._agent_states.items()
-        }
+        observations = {}
+        for agent_id, agent in self._agent_states.items():
+            raw_obs = agent.get_observation(self._agent_states)
+            observations[agent_id] = self._sanitize_observation(raw_obs)
 
         infos = {agent_id: {} for agent_id in self.agents}
 
@@ -173,10 +179,10 @@ class OrbitalEnv(ParallelEnv):
         rewards = {aid: float(rewards_raw.get(aid, 0.0)) for aid in self.agents}
 
         # Observations after state update
-        observations = {
-            agent_id: agent.get_observation(self._agent_states)
-            for agent_id, agent in self._agent_states.items()
-        }
+        observations = {}
+        for agent_id, agent in self._agent_states.items():
+            raw_obs = agent.get_observation(self._agent_states)
+            observations[agent_id] = self._sanitize_observation(raw_obs)
 
         # Episode termination and truncation
         # Terminate on any critical flag (collision, intercept, no fuel)
