@@ -91,11 +91,11 @@ def launch_inference(inference_ctx: Dict[str, Any]) -> Dict[str, Any]:
         for aid, policy_id in policy_ids.items()
         if modules[policy_id].is_stateful()
     }
-    initial_distances = env.get_pairwise_distances_km()
+    initial_distances = env.get_pairwise_distances_m()
 
     times_min: List[float] = [0.0]
     step_times_min: List[float] = []
-    trajectories_km: Dict[str, List[np.ndarray]] = {aid: [env.get_position_km(aid)] for aid in agent_ids}
+    trajectories_m: Dict[str, List[np.ndarray]] = {aid: [env.get_position_m(aid)] for aid in agent_ids}
     rewards_hist: Dict[str, List[float]] = {aid: [] for aid in agent_ids}
     fuel_hist: Dict[str, List[float]] = {aid: [env.get_remaining_delta_v_mps(aid)] for aid in agent_ids}
     action_mag_hist: Dict[str, List[float]] = {aid: [] for aid in agent_ids}
@@ -144,10 +144,10 @@ def launch_inference(inference_ctx: Dict[str, Any]) -> Dict[str, Any]:
 
         for aid in agent_ids:
             rewards_hist[aid].append(float(rewards.get(aid, 0.0)))
-            trajectories_km[aid].append(env.get_position_km(aid))
+            trajectories_m[aid].append(env.get_position_m(aid))
             fuel_hist[aid].append(env.get_remaining_delta_v_mps(aid))
 
-        for pair_key, distance in env.get_pairwise_distances_km().items():
+        for pair_key, distance in env.get_pairwise_distances_m().items():
             distances_hist[pair_key].append(distance)
 
         terminated = bool(any(terminations.values())) if terminations else False
@@ -168,7 +168,7 @@ def launch_inference(inference_ctx: Dict[str, Any]) -> Dict[str, Any]:
         "flags": final_flags,
         "total_rewards": total_rewards,
         "remaining_delta_v_mps": final_remaining_fuel,
-        "final_pairwise_distances_km": final_distances,
+        "final_pairwise_distances_m": final_distances,
     }
 
     return {
@@ -176,11 +176,11 @@ def launch_inference(inference_ctx: Dict[str, Any]) -> Dict[str, Any]:
         "agent_ids": agent_ids,
         "times_min": times_min,
         "step_times_min": step_times_min,
-        "trajectories_km": trajectories_km,
+        "trajectories_m": trajectories_m,
         "rewards": rewards_hist,
         "fuel_mps": fuel_hist,
         "action_magnitudes_mps": action_mag_hist,
-        "distances_km": distances_hist,
+        "distances_m": distances_hist,
         "report": report,
     }
 
@@ -192,32 +192,32 @@ def plot_inference(plot_save_dir: str, kargs):
     agent_ids: List[str] = kargs["agent_ids"]
     times_min: List[float] = kargs["times_min"]
     step_times_min: List[float] = kargs["step_times_min"]
-    trajectories_km: Dict[str, List[np.ndarray]] = kargs["trajectories_km"]
+    trajectories_m: Dict[str, List[np.ndarray]] = kargs["trajectories_m"]
     rewards_hist: Dict[str, List[float]] = kargs["rewards"]
     fuel_hist: Dict[str, List[float]] = kargs["fuel_mps"]
     action_mag_hist: Dict[str, List[float]] = kargs["action_magnitudes_mps"]
-    distances_hist: Dict[str, List[float]] = kargs["distances_km"]
+    distances_hist: Dict[str, List[float]] = kargs["distances_m"]
 
     # 1. 3D Orbital Trajectories
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection="3d")
     for aid in agent_ids:
-        traj = np.asarray(trajectories_km[aid], dtype=float)
+        traj = np.asarray(trajectories_m[aid], dtype=float)
         ax.plot(traj[:, 0], traj[:, 1], traj[:, 2], label=aid)
         ax.scatter(traj[0, 0], traj[0, 1], traj[0, 2], marker="o", s=18)
         ax.scatter(traj[-1, 0], traj[-1, 1], traj[-1, 2], marker="x", s=24)
 
     # Plot Earth for reference
     u_sphere, v_sphere = np.mgrid[0 : 2 * np.pi : 20j, 0 : np.pi : 10j]
-    R_earth = float(R_EARTH / (1 * u.km))
+    R_earth = float(R_EARTH / (1 * u.m))
     x_earth = R_earth * np.cos(u_sphere) * np.sin(v_sphere)
     y_earth = R_earth * np.sin(u_sphere) * np.sin(v_sphere)
     z_earth = R_earth * np.cos(v_sphere)
     ax.plot_surface(x_earth, y_earth, z_earth, color="blue", alpha=0.1)
 
-    ax.set_xlabel("X (km)")
-    ax.set_ylabel("Y (km)")
-    ax.set_zlabel("Z (km)")
+    ax.set_xlabel("X (m)")
+    ax.set_ylabel("Y (m)")
+    ax.set_zlabel("Z (m)")
     ax.set_title("Orbital Trajectories")
     ax.legend()
     fig.tight_layout()
@@ -264,14 +264,14 @@ def plot_inference(plot_save_dir: str, kargs):
         ax.text(0.5, 0.5, "No pairwise distances (single-agent case).", ha="center", va="center")
 
     ax.axhline(
-        y=DEFAULT_OBJECTIVES["collision_distance_km"],
+        y=DEFAULT_OBJECTIVES["collision_distance_m"],
         color="r",
         linestyle="--",
         label="Collision Threshold",
     )
     ax.set_yscale("log")
     ax.set_xlabel("Time (min)")
-    ax.set_ylabel("Distance (km)")
+    ax.set_ylabel("Distance (m)")
     ax.set_title("Relative Distances (Log Scale)")
     ax.legend()
     ax.grid(True, which="both", ls="-", alpha=0.5)

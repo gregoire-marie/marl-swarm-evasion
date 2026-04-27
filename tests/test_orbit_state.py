@@ -8,7 +8,7 @@ from src.main.python.utils.constants import MU_EARTH
 def get_sample_elements():
     """Approximate LEO orbit similar to the ISS"""
     return (
-        (6378.0 + 423.0) * u.km,      # a (semi-major axis)
+        (6_378_000.0 + 423_000.0) * u.m,      # a (semi-major axis)
         0.00033 * u.one,    # eccentricity
         51.6 * u.deg,       # inclination
         0 * u.deg,          # RAAN
@@ -27,17 +27,18 @@ def test_initialization_and_rv():
     # Structural assertions
     assert r.shape == (3,)
     assert v.shape == (3,)
-    assert r.unit == u.km
-    assert v.unit == u.km / u.s
+    assert r.unit == u.m
+    assert v.unit == u.m / u.s
 
     # Check norm against vis-viva equation
     a, e, *_ = get_sample_elements()
-    r_mag = np.linalg.norm(r.to_value())
-    expected_r = a.to_value(u.km) * (1 - e.value)  # Perigee for ν = 0
+    r_mag = np.linalg.norm(r.to_value(u.m))
+    expected_r = a.to_value(u.m) * (1 - e.value)  # Perigee for ν = 0
     assert np.isclose(r_mag, expected_r, rtol=1e-3)
 
-    v_mag = np.linalg.norm(v.to_value())
-    expected_v = np.sqrt(MU_EARTH.to_value(u.km**3 / u.s**2) * (2 / expected_r - 1 / a.to_value(u.km)))
+    v_mag = np.linalg.norm(v.to_value(u.m / u.s))
+    r_mag_m = np.linalg.norm(r.to_value(u.m))
+    expected_v = np.sqrt(MU_EARTH.to_value(u.m**3 / u.s**2) * (2 / r_mag_m - 1 / a.to_value(u.m)))
     assert np.isclose(v_mag, expected_v, rtol=1e-3)
 
 
@@ -60,15 +61,15 @@ def test_propagation_forward():
     assert abs((state.epoch - new_epoch).sec) < 1e-6, "Epoch mismatch after propagation."
 
     # Compute measured position & velocity changes
-    dr = np.linalg.norm((r1 - r0).to_value(u.km))         # [km]
+    dr = np.linalg.norm((r1 - r0).to_value(u.m))          # [m]
     dv = np.linalg.norm((v1 - v0).to_value(u.m / u.s))    # [m/s]
 
     # Compute expected Δr using linear motion: dr ≈ |v₀| * Δt
-    v0_mag = np.linalg.norm(v0.to_value(u.km / u.s))      # [km/s]
-    expected_dr = v0_mag * dt                             # [km]
+    v0_mag = np.linalg.norm(v0.to_value(u.m / u.s))       # [m/s]
+    expected_dr = v0_mag * dt                             # [m]
 
     assert np.isclose(dr, expected_dr, rtol=0.0005), (
-        f"Position change Δr = {dr:.3f} km, expected ≈ {expected_dr:.3f} km"
+        f"Position change Δr = {dr:.3f} m, expected ≈ {expected_dr:.3f} m"
     )
 
     # Compute expected Δv using central acceleration: dv ≈ |a| * Δt
@@ -161,11 +162,11 @@ def test_keplerian_output():
     a, e, inc, raan, argp, M = state.get_keplerian()
 
     # Compare to input values with tight tolerance
-    atol_a = 1e-2 * u.km
+    atol_a = 10.0 * u.m
     atol_ang = 1e-3 * u.deg
     atol_e = 1e-6
 
-    assert np.isclose(a.to_value(u.km), original_elements[0].to_value(u.km), atol=atol_a.to_value())
+    assert np.isclose(a.to_value(u.m), original_elements[0].to_value(u.m), atol=atol_a.to_value())
     assert np.isclose(e.value, original_elements[1].value, atol=atol_e)
     assert np.isclose(inc.to_value(u.deg), original_elements[2].to_value(u.deg), atol=atol_ang.to_value())
     assert np.isclose(raan.to_value(u.deg), original_elements[3].to_value(u.deg), atol=atol_ang.to_value())

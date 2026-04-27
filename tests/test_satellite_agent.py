@@ -8,7 +8,7 @@ from src.main.python.agents.satellite_agent import SatelliteAgent
 def get_sample_elements():
     """Approximate LEO orbit similar to the ISS"""
     return (
-        (6378.0 + 423.0) * u.km,      # a (semi-major axis)
+        (6_378_000.0 + 423_000.0) * u.m,      # a (semi-major axis)
         0.00033 * u.one,    # eccentricity
         51.6 * u.deg,       # inclination
         0 * u.deg,          # RAAN
@@ -59,8 +59,8 @@ def test_propagation_and_action():
     assert abs((agent.orbit_state.epoch - future_time).sec) < 1e-3
 
     r1, v1 = agent.orbit_state.get_rv()
-    delta_r = np.linalg.norm((r1 - r0).to_value(u.km))
-    assert delta_r > 0.1, f"Expected non-zero position change, got {delta_r:.6f} km"
+    delta_r = np.linalg.norm((r1 - r0).to_value(u.m))
+    assert delta_r > 100.0, f"Expected non-zero position change, got {delta_r:.6f} m"
 
     # Apply Δv
     dv_vec = np.array([10.0, 0.0, 0.0], dtype=np.float32)
@@ -181,7 +181,7 @@ def test_observation_vector():
     own_elements = get_sample_elements()
     a, e, i, raan, argp, M = own_elements
     from src.main.python.utils.normalization import A_REF, A_SCALE
-    expected_first_elem = (a.to_value(u.km) - A_REF) / A_SCALE
+    expected_first_elem = (a.to_value(u.m) - A_REF) / A_SCALE
     actual_first_elem = obs[0]
 
     assert np.isclose(actual_first_elem, expected_first_elem, rtol=1e-3), (

@@ -10,7 +10,7 @@ from src.main.python.agents.orbit_state import OrbitState
 
 
 def elements_a_b():
-    a = 6771.0 * u.km
+    a = 6_771_000.0 * u.m
     e = 0.0001 * u.one
     inc = 51.6 * u.deg
     # Slightly different RAAN and argp
@@ -43,11 +43,11 @@ def test_compute_instantaneous_delta_v_shapes_and_units():
 def test_compute_eci_distance_symmetry_and_nonnegativity():
     epoch = Time("2025-01-01 00:00:00", scale="utc")
     elements1 = (
-        6771.0 * u.km, 0.0002 * u.one, 51.6 * u.deg,
+        6_771_000.0 * u.m, 0.0002 * u.one, 51.6 * u.deg,
         0 * u.deg, 0 * u.deg, 0 * u.deg
     )
     elements2 = (
-        (6771.0 + 50) * u.km, 0.0002 * u.one, 51.6 * u.deg,
+        (6_771_000.0 + 50_000.0) * u.m, 0.0002 * u.one, 51.6 * u.deg,
         10.0 * u.deg, 0 * u.deg, 120.0 * u.deg
     )
 

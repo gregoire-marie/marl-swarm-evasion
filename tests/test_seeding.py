@@ -73,8 +73,8 @@ def test_set_global_seed_different_seeds_diverge():
 
 
 def _make_dummy_env(n_agents=2):
-    base_alt = 500.0  # km
-    base_a = (6378.0 + base_alt) * u.km
+    base_alt = 500_000.0  # m
+    base_a = (6_378_000.0 + base_alt) * u.m
     agent_configs = {}
     for i in range(n_agents):
         agent_id = f"agent_{i}"

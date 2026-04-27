@@ -7,8 +7,8 @@ from src.main.python.orbital_meca.orbits import compute_eci_distance
 
 def make_dummy_config(n_agents=2, maneuver_frame="ECI"):
     """Returns test config with `n_agents` in LEO with spaced RAANs."""
-    base_alt = 500.0  # km
-    base_a = (6378.0 + base_alt) * u.km
+    base_alt = 500_000.0  # m
+    base_a = (6_378_000.0 + base_alt) * u.m
     agent_configs = {}
 
     for i in range(n_agents):
@@ -196,7 +196,7 @@ def test_telemetry_helpers():
     agent_ids = env.agents
     aid0, aid1 = agent_ids
 
-    position = env.get_position_km(aid0)
+    position = env.get_position_m(aid0)
     assert isinstance(position, np.ndarray)
     assert position.shape == (3,)
     assert np.all(np.isfinite(position))
@@ -204,7 +204,7 @@ def test_telemetry_helpers():
     initial_remaining_dv = env.get_remaining_delta_v_mps(aid0)
     assert np.isclose(initial_remaining_dv, 10000.0, atol=1e-6)
 
-    initial_distances = env.get_pairwise_distances_km()
+    initial_distances = env.get_pairwise_distances_m()
     assert set(initial_distances.keys()) == {f"{aid0}__{aid1}"}
     expected_initial_distance = float(
         compute_eci_distance(
@@ -219,7 +219,7 @@ def test_telemetry_helpers():
     updated_remaining_dv = env.get_remaining_delta_v_mps(aid0)
     assert np.isclose(updated_remaining_dv, 9900.0, atol=1e-6)
 
-    updated_distances = env.get_pairwise_distances_km()
+    updated_distances = env.get_pairwise_distances_m()
     expected_updated_distance = float(
         compute_eci_distance(
             env._agent_states[aid0].orbit_state,

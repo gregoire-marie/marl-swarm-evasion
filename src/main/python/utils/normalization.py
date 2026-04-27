@@ -3,14 +3,14 @@ import numpy as np
 # Normalization constants for observations
 # We aim to scale most values to roughly [-1, 1] or [0, 1]
 
-# Semi-major axis: LEO is ~6500 to ~8500 km.
-# Using a reference of 7000km and scaling by 1000km.
-A_REF = 7000.0
-A_SCALE = 1000.0
+# Semi-major axis: LEO is ~6.5e6 to ~8.5e6 m.
+# Using a reference of 7.0e6 m and scaling by 1.0e6 m.
+A_REF = 7_000_000.0
+A_SCALE = 1_000_000.0
 
-# Distances: can vary from 0 to thousands of km.
-# Using 1000km as a reference scale.
-DIST_SCALE = 1000.0
+# Distances: can vary from 0 to millions of meters.
+# Using 1.0e6 m as a reference scale.
+DIST_SCALE = 1_000_000.0
 
 # Fuel: remaining delta-v.
 # Using 10,000 m/s as a typical max value if not provided.
