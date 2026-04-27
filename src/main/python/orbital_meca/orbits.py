@@ -52,13 +52,15 @@ def compute_instantaneous_delta_v(
     # Extract velocity vectors
     _, vA = orbA.rv()
     _, vB = orbB.rv()
+    vA = vA.to(u.m / u.s)
+    vB = vB.to(u.m / u.s)
 
     # Compute delta-v vector and magnitude
     delta_v_vector = vB - vA
     # Use numpy norm for robust behavior across astropy versions
     delta_v_magnitude = np.linalg.norm(delta_v_vector.to_value(u.m / u.s)) * u.m / u.s
 
-    return delta_v_vector.to(u.m / u.s), delta_v_magnitude
+    return delta_v_vector, delta_v_magnitude
 
 
 def compute_eci_distance(state_a, state_b):

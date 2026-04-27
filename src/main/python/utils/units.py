@@ -6,7 +6,7 @@ Unit guardrails and helpers.
 This module centralizes thin wrappers around Astropy to enforce canonical units
 across the codebase, as per the project guidelines:
  - Distances in km
- - Orbital velocities in km/s
+ - Orbital velocities in m/s
  - Delta-v in m/s
  - Angles in degrees externally; radians for internal unwrapped arrays
  - Time handled by astropy.time (Time/TimeDelta)

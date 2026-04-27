@@ -69,19 +69,19 @@ class OrbitState:
         Columns are unit vectors [T, N, W] expressed in ECI.
         """
         r, v = self.orbit.rv()
-        r_km = r.to_value(u.km)
-        v_kms = v.to_value(u.km / u.s)
+        r_m = r.to_value(u.m)
+        v_mps = v.to_value(u.m / u.s)
 
-        v_norm = np.linalg.norm(v_kms)
+        v_norm = np.linalg.norm(v_mps)
         if v_norm == 0.0:
             raise ValueError("Cannot build TNW frame with zero velocity norm.")
 
-        h_vec = np.cross(r_km, v_kms)
+        h_vec = np.cross(r_m, v_mps)
         h_norm = np.linalg.norm(h_vec)
         if h_norm == 0.0:
             raise ValueError("Cannot build TNW frame with zero angular-momentum norm.")
 
-        t_hat = v_kms / v_norm
+        t_hat = v_mps / v_norm
         w_hat = h_vec / h_norm
         n_hat = np.cross(w_hat, t_hat)
         n_norm = np.linalg.norm(n_hat)
@@ -193,7 +193,7 @@ class OrbitState:
             dv_eci = dv_input
 
         r, v = self.orbit.rv()
-        v_new = v + dv_eci
+        v_new = v.to(u.m / u.s) + dv_eci
 
         self.orbit = Orbit.from_vectors(Earth, r, v_new, epoch=time)
         self.epoch = time
@@ -205,9 +205,10 @@ class OrbitState:
         Returns:
             tuple:
                 - r (Quantity[km]): Position vector.
-                - v (Quantity[km/s]): Velocity vector.
+                - v (Quantity[m/s]): Velocity vector.
         """
-        return self.orbit.rv()
+        r, v = self.orbit.rv()
+        return r.to(u.km), v.to(u.m / u.s)
 
     def get_keplerian(self):
         """

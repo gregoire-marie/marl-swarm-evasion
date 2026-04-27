@@ -53,7 +53,7 @@ This project standardizes physical units, angles, and time across the codebase f
 
 - Units and types
   - Internals use astropy quantities (Quantity) end-to-end.
-  - Distances are in kilometers (km); orbital velocities are in kilometers per second (km/s); Δv is in meters per second (m/s).
+  - Distances are in kilometers (km); orbital velocities and Δv are in meters per second (m/s).
   - Angles use mean anomaly M in the public API; internally conversions may use true anomaly ν.
   - Time is handled with astropy.time (Time, TimeDelta). Avoid naive datetime.
   - At RL edges (actions/observations), values are plain numpy float arrays. Convert with .to_value(...) at boundaries.
