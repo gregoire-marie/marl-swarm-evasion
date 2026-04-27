@@ -3,10 +3,10 @@ from astropy import units as u
 
 from src.main.python.utils.constants import R_EARTH
 
-def get_random_leo_elements(rng, alt_min=400.0, alt_max=600.0):
+def get_random_leo_elements(rng, alt_min=400_000.0, alt_max=600_000.0):
     """Generate random LEO Keplerian elements."""
     alt = rng.uniform(alt_min, alt_max)
-    a = R_EARTH + alt * u.km
+    a = R_EARTH + alt * u.m
     e = rng.uniform(0.0, 0.001) * u.one
     inc = rng.uniform(0.0, 98.0) * u.deg
     raan = rng.uniform(0.0, 360.0) * u.deg

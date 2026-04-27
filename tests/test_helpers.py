@@ -15,7 +15,7 @@ from src.main.python.agents.orbit_state import OrbitState
 
 def sample_elements():
     return (
-        (6378.0 + 500.0) * u.km,
+        (6_378_000.0 + 500_000.0) * u.m,
         0.00033 * u.one,
         51.6 * u.deg,
         0 * u.deg,
@@ -47,9 +47,9 @@ def test_keplerian_to_array_properties():
     assert arr.shape == (6,)
     assert arr.dtype == np.float32
 
-    # Semi-major axis in km should match input within tolerance
-    a_km = sample_elements()[0].to_value(u.km)
-    assert np.isclose(arr[0], a_km, rtol=1e-3)
+    # Semi-major axis in m should match input within tolerance
+    a_m = sample_elements()[0].to_value(u.m)
+    assert np.isclose(arr[0], a_m, rtol=1e-3)
     # All finite
     assert np.all(np.isfinite(arr))
 
@@ -76,9 +76,9 @@ def test_vector_to_cartesian_units():
     vec = np.array([1.0, 2.0, 3.0])
     rep = vector_to_cartesian(vec)
     # CartesianRepresentation stores components as Quantity
-    assert rep.x.unit == u.km
-    assert rep.y.unit == u.km
-    assert rep.z.unit == u.km
-    assert np.isclose(rep.x.to_value(u.km), 1.0)
-    assert np.isclose(rep.y.to_value(u.km), 2.0)
-    assert np.isclose(rep.z.to_value(u.km), 3.0)
+    assert rep.x.unit == u.m
+    assert rep.y.unit == u.m
+    assert rep.z.unit == u.m
+    assert np.isclose(rep.x.to_value(u.m), 1.0)
+    assert np.isclose(rep.y.to_value(u.m), 2.0)
+    assert np.isclose(rep.z.to_value(u.m), 3.0)

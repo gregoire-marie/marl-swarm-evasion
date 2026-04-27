@@ -52,13 +52,15 @@ def compute_instantaneous_delta_v(
     # Extract velocity vectors
     _, vA = orbA.rv()
     _, vB = orbB.rv()
+    vA = vA.to(u.m / u.s)
+    vB = vB.to(u.m / u.s)
 
     # Compute delta-v vector and magnitude
     delta_v_vector = vB - vA
     # Use numpy norm for robust behavior across astropy versions
     delta_v_magnitude = np.linalg.norm(delta_v_vector.to_value(u.m / u.s)) * u.m / u.s
 
-    return delta_v_vector.to(u.m / u.s), delta_v_magnitude
+    return delta_v_vector, delta_v_magnitude
 
 
 def compute_eci_distance(state_a, state_b):
@@ -69,14 +71,14 @@ def compute_eci_distance(state_a, state_b):
         state_a, state_b: OrbitState objects
 
     Returns:
-        float: Distance in kilometers
+        float: Distance in meters
     """
     r1, _ = state_a.get_rv()
     r2, _ = state_b.get_rv()
-    return np.linalg.norm((r1 - r2).to_value(u.km))
+    return np.linalg.norm((r1 - r2).to_value(u.m))
 
 
-def compute_altitude_km(state) -> float:
+def compute_altitude_m(state) -> float:
     r, _ = state.get_rv()
-    radius_km = np.linalg.norm(r.to_value(u.km))
-    return float(radius_km - R_EARTH.to_value(u.km))
+    radius_m = np.linalg.norm(r.to_value(u.m))
+    return float(radius_m - R_EARTH.to_value(u.m))

@@ -146,7 +146,7 @@ class SatelliteAgent:
             
             obs.extend([oa_norm, oe_norm, oi_norm, oraan_norm, oargp_norm, om_norm])
             
-            distance = compute_eci_distance(self.orbit_state, other.orbit_state)  # km
+            distance = compute_eci_distance(self.orbit_state, other.orbit_state)  # m
             obs.append(distance / DIST_SCALE)
 
         return np.array(obs, dtype=np.float32)
@@ -201,5 +201,5 @@ class SatelliteAgent:
         """
         a, e, i, raan, argp, M = self.orbit_state.get_keplerian()
         log.info(
-            f"[{self.id}] a={a.to(u.km):.1f}, e={e:.4f}, i={i.to(u.deg):.2f}, M={M.to(u.deg):.1f}"
+            f"[{self.id}] a={a.to(u.m):.1f}, e={e:.4f}, i={i.to(u.deg):.2f}, M={M.to(u.deg):.1f}"
         )

@@ -26,7 +26,7 @@ class OrbitalEnv(ParallelEnv):
     - External RL interface (actions/observations): plain numpy float arrays
       • Actions are delta-v components in m/s (floats)
       • Observations are unitless float vectors built from Keplerian elements (converted to floats),
-        remaining Δv (m/s), and pairwise distances (km)
+        remaining Δv (m/s), and pairwise distances (m)
     - Internals (physics): astropy.units.Quantity is used end-to-end for positions, velocities,
       angles, time, and Δv. Conversions to floats happen only at the API edges for RL.
 
@@ -61,7 +61,7 @@ class OrbitalEnv(ParallelEnv):
             agent_configs (dict): Per-agent configuration, where each entry contains:
                 - "role" (str): "interceptor" or "target".
                 - "init_orbit" (tuple): Classical elements (a, e, i, RAAN, argp, M) as astropy Quantities
-                  with units [km, one, deg, deg, deg, deg].
+                  with units [m, one, deg, deg, deg, deg].
                 - "init_delta_v" (float or Quantity): Initial Δv budget. If float, interpreted as m/s.
             env_config (dict): Environment parameters including:
                 - "timestep_sec" (float): Time step in seconds.
@@ -252,12 +252,12 @@ class OrbitalEnv(ParallelEnv):
             dtype=np.float32,
         )
 
-    def get_position_km(self, agent_id: str) -> np.ndarray:
+    def get_position_m(self, agent_id: str) -> np.ndarray:
         """
-        Return the current ECI position of one agent in kilometers.
+        Return the current ECI position of one agent in meters.
         """
         r, _ = self._agent_states[agent_id].orbit_state.get_rv()
-        return np.asarray(r.to_value(u.km), dtype=float)
+        return np.asarray(r.to_value(u.m), dtype=float)
 
     def get_remaining_delta_v_mps(self, agent_id: str) -> float:
         """
@@ -265,9 +265,9 @@ class OrbitalEnv(ParallelEnv):
         """
         return float(self._agent_states[agent_id].get_remaining_delta_v().to_value(u.m / u.s))
 
-    def get_pairwise_distances_km(self) -> dict:
+    def get_pairwise_distances_m(self) -> dict:
         """
-        Return pairwise distances between all current agents in kilometers.
+        Return pairwise distances between all current agents in meters.
         """
         distances = {}
         agent_ids = list(self.agents)

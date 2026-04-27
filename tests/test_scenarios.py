@@ -10,7 +10,7 @@ def test_get_random_leo_elements():
     elements = get_random_leo_elements(rng)
     assert len(elements) == 6
     # a, e, inc, raan, argp, m
-    assert 400.0 <= (elements[0].to_value('km') - 6378.137) <= 600.0
+    assert 400_000.0 <= (elements[0].to_value('m') - 6_378_137.0) <= 600_000.0
     assert 0.0 <= elements[1].value <= 0.001
     assert 0.0 <= elements[2].to_value('deg') <= 98.0
 
