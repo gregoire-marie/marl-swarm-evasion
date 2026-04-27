@@ -1,9 +1,14 @@
+import logging
 import numpy as np
 import pytest
 from astropy import units as u
 from astropy.time import Time
+from uuid import uuid4
 
 from src.main.python.utils.helpers import (
+    get_logger,
+    policy_mapping_fn,
+    resolve_checkpoint_path,
     unwrap_angle,
     keplerian_to_array,
     delta_v_norm,
@@ -82,3 +87,79 @@ def test_vector_to_cartesian_units():
     assert np.isclose(rep.x.to_value(u.m), 1.0)
     assert np.isclose(rep.y.to_value(u.m), 2.0)
     assert np.isclose(rep.z.to_value(u.m), 3.0)
+
+
+def test_get_logger_reuses_existing_handler():
+    logger_name = f"test_logger_{uuid4().hex}"
+
+    logger = get_logger(logger_name, level=logging.DEBUG)
+    same_logger = get_logger(logger_name, level=logging.ERROR)
+
+    assert same_logger is logger
+    assert len(logger.handlers) == 1
+    assert logger.level == logging.DEBUG
+    assert logger.handlers[0].level == logging.DEBUG
+
+
+def test_resolve_checkpoint_path_rejects_missing_and_file_paths(tmp_path):
+    missing_path = tmp_path / "missing"
+    file_path = tmp_path / "checkpoint.txt"
+    file_path.write_text("not a directory")
+
+    with pytest.raises(FileNotFoundError):
+        resolve_checkpoint_path(str(missing_path))
+
+    with pytest.raises(ValueError, match="must be a directory"):
+        resolve_checkpoint_path(str(file_path))
+
+
+def test_resolve_checkpoint_path_accepts_concrete_checkpoint_dir(tmp_path):
+    checkpoint_dir = tmp_path / "checkpoint_000123"
+    checkpoint_dir.mkdir()
+
+    resolved = resolve_checkpoint_path(str(checkpoint_dir))
+
+    assert resolved == str(checkpoint_dir.resolve())
+
+
+def test_resolve_checkpoint_path_accepts_checkpoint_state_directory(tmp_path):
+    checkpoint_dir = tmp_path / "trial"
+    checkpoint_dir.mkdir()
+    (checkpoint_dir / "rllib_checkpoint.json").write_text("{}")
+
+    resolved = resolve_checkpoint_path(str(checkpoint_dir))
+
+    assert resolved == str(checkpoint_dir.resolve())
+
+
+def test_resolve_checkpoint_path_picks_latest_trial_checkpoint(tmp_path):
+    trial_dir = tmp_path / "trial"
+    trial_dir.mkdir()
+    (trial_dir / "checkpoint_000001").mkdir()
+    (trial_dir / "checkpoint_000010").mkdir()
+    (trial_dir / "checkpoint_000003").mkdir()
+
+    resolved = resolve_checkpoint_path(str(trial_dir))
+
+    assert resolved == str((trial_dir / "checkpoint_000010").resolve())
+
+
+def test_resolve_checkpoint_path_requires_checkpoint_content(tmp_path):
+    trial_dir = tmp_path / "trial"
+    trial_dir.mkdir()
+    (trial_dir / "notes").mkdir()
+
+    with pytest.raises(ValueError, match="No RLlib checkpoint found"):
+        resolve_checkpoint_path(str(trial_dir))
+
+
+@pytest.mark.parametrize(
+    ("agent_id", "expected_policy"),
+    [
+        ("interceptor_0", "interceptor_policy"),
+        ("target_0", "target_policy"),
+        ("observer_0", "shared_policy"),
+    ],
+)
+def test_policy_mapping_fn(agent_id, expected_policy):
+    assert policy_mapping_fn(agent_id) == expected_policy
