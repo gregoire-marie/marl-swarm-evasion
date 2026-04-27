@@ -1,33 +1,25 @@
 import os
 import argparse
-from itertools import combinations
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 import numpy as np
 import matplotlib.pyplot as plt
 import ray
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
-from ray.tune.registry import register_env
 
-from src.main.python.environment.orbital_env import OrbitalEnv
-from src.main.python.environment.scenarios import pursuit_evasion_scenario
-from src.main.python.orbital_meca.orbits import compute_eci_distance
 from src.main.python.utils.constants import DEFAULT_OBJECTIVES, R_EARTH
 from src.main.python.utils.helpers import get_logger, policy_mapping_fn, resolve_checkpoint_path
+from src.main.python.utils.rllib_setup import (
+    compute_deterministic_module_action,
+    create_raw_env,
+    parse_maneuver_frame,
+    register_orbital_env,
+    run_spec_from_args,
+    run_spec_from_rllib_env_config,
+)
 from astropy import units as u
 
 logger = get_logger("inference_app")
-SUPPORTED_MANEUVER_FRAMES = ("ECI", "TNW")
-
-
-def parse_maneuver_frame(value: str) -> str:
-    frame = str(value).strip().upper()
-    if frame not in SUPPORTED_MANEUVER_FRAMES:
-        raise argparse.ArgumentTypeError(
-            f"Unsupported maneuver frame '{value}'. Supported frames: {list(SUPPORTED_MANEUVER_FRAMES)}."
-        )
-    return frame
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Inference app for orbital MARL.")
@@ -36,109 +28,44 @@ def parse_args():
         type=str,
         help="Path to a run directory containing RLlib checkpoint_* folders, or directly to one of these specific checkpoints.",
     )
-    parser.add_argument("--n-interceptors", type=int, default=1, help="Number of interceptor agents.")
-    parser.add_argument("--n-targets", type=int, default=1, help="Number of target agents.")
-    parser.add_argument("--timestep", type=float, default=60.0, help="Simulation timestep in seconds.")
-    parser.add_argument("--episode-length", type=int, default=100, help="Number of steps per episode.")
-    parser.add_argument("--start-time", type=str, default="2025-01-01 00:00:00", help="Date of start of inference episodes.")
-    parser.add_argument("--max-delta-v-kms", type=float, default=0.02, help="The maximum single maneuver delta-v in km/s.")
+    parser.add_argument("--n-interceptors", type=int, default=None, help="Number of interceptor agents. Defaults to the checkpoint config.")
+    parser.add_argument("--n-targets", type=int, default=None, help="Number of target agents. Defaults to the checkpoint config.")
+    parser.add_argument("--timestep", type=float, default=None, help="Simulation timestep in seconds. Defaults to the checkpoint config.")
+    parser.add_argument("--episode-length", type=int, default=None, help="Number of steps per episode. Defaults to the checkpoint config.")
+    parser.add_argument("--max-delta-v-kms", type=float, default=None, help="The maximum single maneuver delta-v in km/s. Defaults to the checkpoint config.")
     parser.add_argument(
         "--freeze-targets",
-        action="store_true",
-        help="Force target agents to apply zero delta-v at each step.",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Whether target agents must apply zero delta-v at each step. Defaults to the checkpoint config.",
     )
     parser.add_argument(
         "--maneuver-frame",
         type=parse_maneuver_frame,
-        default="ECI",
-        help="Action frame for maneuvers: ECI or TNW.",
+        default=None,
+        help="Action frame for maneuvers: ECI or TNW. Defaults to the checkpoint config.",
     )
-    parser.add_argument("--seed", type=int, default=42, help="Random seed for the scenario.")
-    parser.add_argument(
-        "--num-workers",
-        type=int,
-        default=0,
-        help="Compatibility flag (unused in single-episode local inference).",
-    )
+    parser.add_argument("--seed", type=int, default=None, help="Random seed for the scenario. Defaults to the checkpoint config.")
     parser.add_argument("--out-dir", type=str, required=False, help="Directory to save plots.")
     return parser.parse_args()
-
-def _validate_args(args: argparse.Namespace) -> None:
-    if args.n_interceptors <= 0:
-        raise ValueError("--n-interceptors must be >= 1.")
-    if args.n_targets <= 0:
-        raise ValueError("--n-targets must be >= 1.")
-    if args.episode_length <= 0:
-        raise ValueError("--episode-length must be >= 1.")
-    if args.max_delta_v_kms <= 0:
-        raise ValueError("--max-delta-v-kms must be > 0.")
-    if args.timestep <= 0:
-        raise ValueError("--timestep must be > 0.")
-
-
-def _rllib_env_creator(config: Dict[str, Any]) -> ParallelPettingZooEnv:
-    agent_configs = pursuit_evasion_scenario(
-        n_interceptors=int(config["n_interceptors"]),
-        n_targets=int(config["n_targets"]),
-        seed=int(config["seed"]),
-    )
-    return ParallelPettingZooEnv(
-        OrbitalEnv(
-            agent_configs=agent_configs,
-            env_config=config["orbital_env_config"],
-        )
-    )
-
-
-def _pairwise_distances(env: OrbitalEnv, pairs: List[Tuple[str, str]]) -> Dict[str, float]:
-    distances: Dict[str, float] = {}
-    for aid, bid in pairs:
-        key = f"{aid}__{bid}"
-        distances[key] = float(
-            compute_eci_distance(
-                env._agent_states[aid].orbit_state,  # noqa: SLF001 - intentional telemetry access for plotting
-                env._agent_states[bid].orbit_state,  # noqa: SLF001 - intentional telemetry access for plotting
-            )
-        )
-    return distances
-
-
-def _position_km(env: OrbitalEnv, agent_id: str) -> np.ndarray:
-    r, _ = env._agent_states[agent_id].orbit_state.get_rv()  # noqa: SLF001 - intentional telemetry access for plotting
-    return np.asarray(r.to_value(u.km), dtype=float)
-
 
 def setup_inference(args: argparse.Namespace, checkpoint_path: str) -> Dict[str, Any]:
     """
     Setup all that is needed for inference.
     """
-    _validate_args(args)
-
-    env_name = OrbitalEnv.metadata.get("name", "orbital_env_v0")
-    register_env(env_name, _rllib_env_creator)
+    register_orbital_env()
 
     if not ray.is_initialized():
         ray.init(ignore_reinit_error=True)
 
     algo = Algorithm.from_checkpoint(checkpoint_path)
-
-    agent_configs = pursuit_evasion_scenario(
-        n_interceptors=args.n_interceptors,
-        n_targets=args.n_targets,
-        seed=args.seed,
-    )
-    orbital_env_config = {
-        "timestep_sec": args.timestep,
-        "episode_length": args.episode_length,
-        "start_time": args.start_time,
-        "max_delta_v_kms": args.max_delta_v_kms,
-        "maneuver_frame": args.maneuver_frame,
-        "freeze_targets": args.freeze_targets,
-    }
-    env = OrbitalEnv(agent_configs=agent_configs, env_config=orbital_env_config)
+    checkpoint_spec = run_spec_from_rllib_env_config(algo.config.env_config)
+    spec = run_spec_from_args(args, base_spec=checkpoint_spec)
+    env = create_raw_env(spec)
 
     return {
         "args": args,
+        "spec": spec,
         "checkpoint_path": checkpoint_path,
         "algo": algo,
         "env": env,
@@ -148,25 +75,32 @@ def launch_inference(inference_ctx: Dict[str, Any]) -> Dict[str, Any]:
     """
     Perform the inference.
     """
-    args: argparse.Namespace = inference_ctx["args"]
-    env: OrbitalEnv = inference_ctx["env"]
+    spec = inference_ctx["spec"]
+    env = inference_ctx["env"]
     algo: Algorithm = inference_ctx["algo"]
 
-    observations, _ = env.reset(seed=args.seed)
+    observations, _ = env.reset(seed=spec.seed)
     agent_ids = list(env.agents)
-    pair_ids = list(combinations(agent_ids, 2))
+    policy_ids = {aid: policy_mapping_fn(aid) for aid in agent_ids}
+    modules = {policy_id: algo.get_module(policy_id) for policy_id in set(policy_ids.values())}
+    missing_modules = [policy_id for policy_id, module in modules.items() if module is None]
+    if missing_modules:
+        raise KeyError(f"Missing RLModule(s) in restored checkpoint: {missing_modules}")
+    module_states = {
+        aid: modules[policy_id].get_initial_state()
+        for aid, policy_id in policy_ids.items()
+        if modules[policy_id].is_stateful()
+    }
+    initial_distances = env.get_pairwise_distances_km()
 
     times_min: List[float] = [0.0]
     step_times_min: List[float] = []
-    trajectories_km: Dict[str, List[np.ndarray]] = {aid: [_position_km(env, aid)] for aid in agent_ids}
+    trajectories_km: Dict[str, List[np.ndarray]] = {aid: [env.get_position_km(aid)] for aid in agent_ids}
     rewards_hist: Dict[str, List[float]] = {aid: [] for aid in agent_ids}
-    fuel_hist: Dict[str, List[float]] = {
-        aid: [float(env._agent_states[aid].get_remaining_delta_v().to_value(u.km / u.s))]  # noqa: SLF001
-        for aid in agent_ids
-    }
+    fuel_hist: Dict[str, List[float]] = {aid: [env.get_remaining_delta_v_kms(aid)] for aid in agent_ids}
     action_mag_hist: Dict[str, List[float]] = {aid: [] for aid in agent_ids}
-    distances_hist: Dict[str, List[float]] = {f"{aid}__{bid}": [] for aid, bid in pair_ids}
-    for pair_key, distance in _pairwise_distances(env, pair_ids).items():
+    distances_hist: Dict[str, List[float]] = {pair_key: [] for pair_key in initial_distances}
+    for pair_key, distance in initial_distances.items():
         distances_hist[pair_key].append(distance)
 
     terminated = False
@@ -174,13 +108,19 @@ def launch_inference(inference_ctx: Dict[str, Any]) -> Dict[str, Any]:
     final_flags: Dict[str, bool] = {}
 
     step_count = 0
-    while step_count < args.episode_length and not (terminated or truncated):
+    while step_count < spec.episode_length and not (terminated or truncated):
         actions: Dict[str, np.ndarray] = {}
         for aid in agent_ids:
-            policy_id = policy_mapping_fn(aid)
-            action = algo.compute_single_action(observations[aid], policy_id=policy_id, explore=False)
-            if isinstance(action, tuple):
-                action = action[0]
+            policy_id = policy_ids[aid]
+            action, next_state = compute_deterministic_module_action(
+                modules[policy_id],
+                observations[aid],
+                normalize_actions=bool(algo.config.normalize_actions),
+                clip_actions=bool(algo.config.clip_actions),
+                module_state=module_states.get(aid),
+            )
+            if next_state is not None:
+                module_states[aid] = next_state
             action_vec = np.asarray(action, dtype=np.float32).reshape(-1)
             if action_vec.shape[0] != 3:
                 raise ValueError(f"Expected 3D action for {aid}, got shape {action_vec.shape}.")
@@ -188,26 +128,26 @@ def launch_inference(inference_ctx: Dict[str, Any]) -> Dict[str, Any]:
             actions[aid] = action_vec
 
             applied_action = action_vec.copy()
-            if args.freeze_targets and aid.startswith("target"):
+            if spec.freeze_targets and aid.startswith("target"):
                 applied_action = np.zeros(3, dtype=np.float32)
             norm = float(np.linalg.norm(applied_action))
-            if norm > args.max_delta_v_kms and norm > 0.0:
-                norm = args.max_delta_v_kms
+            if norm > spec.max_delta_v_kms and norm > 0.0:
+                norm = spec.max_delta_v_kms
             action_mag_hist[aid].append(norm)
 
         observations, rewards, terminations, truncations, infos = env.step(actions)
         step_count += 1
 
-        t_min = (step_count * args.timestep) / 60.0
+        t_min = (step_count * spec.timestep) / 60.0
         times_min.append(t_min)
         step_times_min.append(t_min)
 
         for aid in agent_ids:
             rewards_hist[aid].append(float(rewards.get(aid, 0.0)))
-            trajectories_km[aid].append(_position_km(env, aid))
-            fuel_hist[aid].append(float(env._agent_states[aid].get_remaining_delta_v().to_value(u.km / u.s)))  # noqa: SLF001
+            trajectories_km[aid].append(env.get_position_km(aid))
+            fuel_hist[aid].append(env.get_remaining_delta_v_kms(aid))
 
-        for pair_key, distance in _pairwise_distances(env, pair_ids).items():
+        for pair_key, distance in env.get_pairwise_distances_km().items():
             distances_hist[pair_key].append(distance)
 
         terminated = bool(any(terminations.values())) if terminations else False
@@ -232,9 +172,8 @@ def launch_inference(inference_ctx: Dict[str, Any]) -> Dict[str, Any]:
     }
 
     return {
-        "args": args,
+        "spec": spec,
         "agent_ids": agent_ids,
-        "pair_ids": pair_ids,
         "times_min": times_min,
         "step_times_min": step_times_min,
         "trajectories_km": trajectories_km,
@@ -249,7 +188,7 @@ def plot_inference(plot_save_dir: str, kargs):
     """
     Plot the inference results.
     """
-    args: argparse.Namespace = kargs["args"]
+    spec = kargs["spec"]
     agent_ids: List[str] = kargs["agent_ids"]
     times_min: List[float] = kargs["times_min"]
     step_times_min: List[float] = kargs["step_times_min"]
@@ -305,7 +244,7 @@ def plot_inference(plot_save_dir: str, kargs):
     ax3.set_ylabel("Action Mag (km/s)")
     ax3.set_xlabel("Time (min)")
     ax3.set_title("Action Magnitudes over Time")
-    ax3.axhline(y=args.max_delta_v_kms, color="k", linestyle="--", label="Max Δv Limit")
+    ax3.axhline(y=spec.max_delta_v_kms, color="k", linestyle="--", label="Max Δv Limit")
     ax3.legend()
     ax3.grid(True)
 
@@ -362,6 +301,7 @@ def main():
     try:
         # Set up the inference
         inference_ctx = setup_inference(args=args, checkpoint_path=checkpoint_path)
+        logger.info(f"Using inference spec: {inference_ctx['spec']}")
 
         logger.info("Starting simulation...")
 
