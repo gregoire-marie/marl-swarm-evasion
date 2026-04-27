@@ -53,13 +53,17 @@ def test_orbital_env_reset_and_step():
         # Type
         assert isinstance(ob, np.ndarray)
         assert ob.ndim == 1
+        assert ob.dtype == np.float32
 
         # Shape matches declared observation space
-        expected_obs_dim = env.observation_space(agent_id).shape[0]
+        obs_space = env.observation_space(agent_id)
+        expected_obs_dim = obs_space.shape[0]
         assert ob.shape[0] == expected_obs_dim, f"{agent_id} obs shape mismatch"
+        assert obs_space.low.dtype == np.float32
+        assert obs_space.high.dtype == np.float32
 
         # In observation space bounds
-        assert env.observation_space(agent_id).contains(ob), f"{agent_id} obs not in observation space"
+        assert obs_space.contains(ob), f"{agent_id} obs not in observation space"
 
     # Store pre-step state
     pre_dvs = {aid: env._agent_states[aid].get_used_delta_v().to_value(u.km / u.s) for aid in env.agents}
@@ -84,6 +88,7 @@ def test_orbital_env_reset_and_step():
     for agent_id in env.agents:
         # Types
         assert isinstance(obs_1[agent_id], np.ndarray)
+        assert obs_1[agent_id].dtype == np.float32
         assert isinstance(rewards[agent_id], float)
         assert isinstance(terms[agent_id], bool)
         assert isinstance(truncs[agent_id], bool)
