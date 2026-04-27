@@ -2,6 +2,7 @@ import numpy as np
 from astropy import units as u
 from src.main.python.environment.orbital_env import OrbitalEnv
 from src.main.python.agents.orbit_state import OrbitState
+from src.main.python.orbital_meca.orbits import compute_eci_distance
 
 
 def make_dummy_config(n_agents=2, maneuver_frame="ECI"):
@@ -53,13 +54,17 @@ def test_orbital_env_reset_and_step():
         # Type
         assert isinstance(ob, np.ndarray)
         assert ob.ndim == 1
+        assert ob.dtype == np.float32
 
         # Shape matches declared observation space
-        expected_obs_dim = env.observation_space(agent_id).shape[0]
+        obs_space = env.observation_space(agent_id)
+        expected_obs_dim = obs_space.shape[0]
         assert ob.shape[0] == expected_obs_dim, f"{agent_id} obs shape mismatch"
+        assert obs_space.low.dtype == np.float32
+        assert obs_space.high.dtype == np.float32
 
         # In observation space bounds
-        assert env.observation_space(agent_id).contains(ob), f"{agent_id} obs not in observation space"
+        assert obs_space.contains(ob), f"{agent_id} obs not in observation space"
 
     # Store pre-step state
     pre_dvs = {aid: env._agent_states[aid].get_used_delta_v().to_value(u.km / u.s) for aid in env.agents}
@@ -84,6 +89,7 @@ def test_orbital_env_reset_and_step():
     for agent_id in env.agents:
         # Types
         assert isinstance(obs_1[agent_id], np.ndarray)
+        assert obs_1[agent_id].dtype == np.float32
         assert isinstance(rewards[agent_id], float)
         assert isinstance(terms[agent_id], bool)
         assert isinstance(truncs[agent_id], bool)
@@ -180,6 +186,47 @@ def test_action_space_contains():
     assert space.shape == (3,)
     assert space.contains(np.array([0.05, 0.05, 0.05], dtype=np.float32))
     assert not space.contains(np.array([0.2, 0.0, 0.0], dtype=np.float32))
+
+
+def test_telemetry_helpers():
+    agent_configs, env_config = make_dummy_config(n_agents=2)
+    env = OrbitalEnv(agent_configs, env_config)
+    env.reset()
+
+    agent_ids = env.agents
+    aid0, aid1 = agent_ids
+
+    position = env.get_position_km(aid0)
+    assert isinstance(position, np.ndarray)
+    assert position.shape == (3,)
+    assert np.all(np.isfinite(position))
+
+    initial_remaining_dv = env.get_remaining_delta_v_kms(aid0)
+    assert np.isclose(initial_remaining_dv, 10.0, atol=1e-6)
+
+    initial_distances = env.get_pairwise_distances_km()
+    assert set(initial_distances.keys()) == {f"{aid0}__{aid1}"}
+    expected_initial_distance = float(
+        compute_eci_distance(
+            env._agent_states[aid0].orbit_state,
+            env._agent_states[aid1].orbit_state,
+        )
+    )
+    assert np.isclose(initial_distances[f"{aid0}__{aid1}"], expected_initial_distance, atol=1e-6)
+
+    env.step({aid0: np.array([0.1, 0.0, 0.0], dtype=np.float32), aid1: np.zeros(3, dtype=np.float32)})
+
+    updated_remaining_dv = env.get_remaining_delta_v_kms(aid0)
+    assert np.isclose(updated_remaining_dv, 9.9, atol=1e-6)
+
+    updated_distances = env.get_pairwise_distances_km()
+    expected_updated_distance = float(
+        compute_eci_distance(
+            env._agent_states[aid0].orbit_state,
+            env._agent_states[aid1].orbit_state,
+        )
+    )
+    assert np.isclose(updated_distances[f"{aid0}__{aid1}"], expected_updated_distance, atol=1e-6)
 
 
 def test_tnw_maneuver_frame_applies_expected_eci_burn():

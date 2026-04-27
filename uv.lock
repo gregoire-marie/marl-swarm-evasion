@@ -757,6 +757,7 @@ dependencies = [
     { name = "pytest-cov" },
     { name = "pytest-mock" },
     { name = "ray", extra = ["tune"] },
+    { name = "rg" },
     { name = "setuptools" },
     { name = "tensorboard" },
     { name = "tensorflow" },
@@ -776,6 +777,7 @@ requires-dist = [
     { name = "pytest-cov", specifier = "==4.1.0" },
     { name = "pytest-mock", specifier = "==3.15.1" },
     { name = "ray", extras = ["tune"], specifier = "==2.46.0" },
+    { name = "rg", specifier = "==0.0.76" },
     { name = "setuptools", specifier = "==56.0.0" },
     { name = "tensorboard", specifier = "==2.17.0" },
     { name = "tensorflow", specifier = "==2.17.1" },
@@ -1412,6 +1414,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/c9/74/b3ff8e6c8446842c3f5c837e9c3dfcfe2018ea6ecef224c710c85ef728f4/requests-2.32.5.tar.gz", hash = "sha256:dbba0bac56e100853db0ea71b82b4dfd5fe2bf6d3754a8893c3af500cec7d7cf", size = 134517, upload-time = "2025-08-18T20:46:02.573Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1e/db/4254e3eabe8020b458f1a747140d32277ec7a271daf1d235b70dc0b4e6e3/requests-2.32.5-py3-none-any.whl", hash = "sha256:2462f94637a34fd532264295e186976db0f5d453d1cdd31473c85a6a161affb6", size = 64738, upload-time = "2025-08-18T20:46:00.542Z" },
+]
+
+[[package]]
+name = "rg"
+version = "0.0.76"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ba/9b/5e9e9ce3e2290d77a61675c19297ecc017e0c188e25306976830185d3f24/rg-0.0.76.tar.gz", hash = "sha256:ea92d4fdb511f4ec1eb73ac1831e688ade3bb1f38b730bf89798205327d62c68", size = 25808, upload-time = "2026-02-10T19:18:58.157Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9f/c7/33d896d5b35d2a7589071a249adb086f89b9c6725c68c32c4487fae19129/rg-0.0.76-py3-none-any.whl", hash = "sha256:5573c12c700cca72765e93acdcbeeb94167997a45276787b6449dec6b2f101c2", size = 33854, upload-time = "2026-02-10T19:18:56.509Z" },
 ]
 
 [[package]]

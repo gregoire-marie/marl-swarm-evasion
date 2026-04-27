@@ -1,24 +1,12 @@
 import numpy as np
 from astropy import units as u
-from astropy.time import Time
 
-SUPPORTED_MANEUVER_FRAMES = {"ECI", "TNW"}
-
-
-def _normalize_maneuver_frame(maneuver_frame: str) -> str:
-    frame = str(maneuver_frame).strip().upper()
-    if frame not in SUPPORTED_MANEUVER_FRAMES:
-        raise ValueError(
-            f"Unsupported maneuver frame '{maneuver_frame}'. "
-            f"Supported frames: {sorted(SUPPORTED_MANEUVER_FRAMES)}."
-        )
-    return frame
-
+from src.main.python.utils.constants import R_EARTH
 
 def get_random_leo_elements(rng, alt_min=400.0, alt_max=600.0):
     """Generate random LEO Keplerian elements."""
     alt = rng.uniform(alt_min, alt_max)
-    a = (6378.137 + alt) * u.km
+    a = R_EARTH + alt * u.km
     e = rng.uniform(0.0, 0.001) * u.one
     inc = rng.uniform(0.0, 98.0) * u.deg
     raan = rng.uniform(0.0, 360.0) * u.deg
@@ -26,9 +14,9 @@ def get_random_leo_elements(rng, alt_min=400.0, alt_max=600.0):
     m = rng.uniform(0.0, 360.0) * u.deg
     return (a, e, inc, raan, argp, m)
 
-def pursuit_evasion_scenario(n_interceptors=1, n_targets=1, seed=None, maneuver_frame="ECI"):
+def pursuit_evasion_scenario(n_interceptors=1, n_targets=1, seed=None):
     """
-    Generate a pursuit-evasion scenario with agents in similar orbits.
+    Generate per-agent configs for a pursuit-evasion scenario.
     """
     rng = np.random.default_rng(seed)
     
@@ -65,19 +53,11 @@ def pursuit_evasion_scenario(n_interceptors=1, n_targets=1, seed=None, maneuver_
             "init_delta_v": 5.0  # Targets usually have less fuel or are more constrained
         }
         
-    env_config = {
-        "timestep_sec": 60.0,
-        "episode_length": 100,
-        "start_time": "2025-01-01 00:00:00",
-        "max_delta_v_kms": 0.02,
-        "maneuver_frame": _normalize_maneuver_frame(maneuver_frame),
-    }
-    
-    return agent_configs, env_config
+    return agent_configs
 
-def constellation_scenario(n_agents=4, seed=None, maneuver_frame="ECI"):
+def constellation_scenario(n_agents=4, seed=None):
     """
-    Generate a constellation of agents spread around the same orbital plane.
+    Generate per-agent configs for a mixed-role constellation scenario.
     """
     rng = np.random.default_rng(seed)
     agent_configs = {}
@@ -95,12 +75,4 @@ def constellation_scenario(n_agents=4, seed=None, maneuver_frame="ECI"):
             "init_delta_v": 10.0
         }
         
-    env_config = {
-        "timestep_sec": 60.0,
-        "episode_length": 100,
-        "start_time": "2025-01-01 00:00:00",
-        "max_delta_v_kms": 0.01,
-        "maneuver_frame": _normalize_maneuver_frame(maneuver_frame),
-    }
-    
-    return agent_configs, env_config
+    return agent_configs

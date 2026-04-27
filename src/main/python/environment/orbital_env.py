@@ -2,9 +2,11 @@ from pettingzoo import ParallelEnv
 from gymnasium.spaces import Box
 import numpy as np
 from astropy.time import Time, TimeDelta
+from astropy import units as u
 
 from src.main.python.agents.satellite_agent import SatelliteAgent
 from src.main.python.environment.reward_engine import compute_rewards
+from src.main.python.orbital_meca.orbits import compute_eci_distance
 from src.main.python.utils.random import set_global_seed
 
 SUPPORTED_MANEUVER_FRAMES = {"ECI", "TNW"}
@@ -89,6 +91,12 @@ class OrbitalEnv(ParallelEnv):
         self._agent_states = {}  # agent_id -> SatelliteAgent
         self._seed = None
 
+    def _sanitize_observation(self, obs: np.ndarray) -> np.ndarray:
+        """
+        Cast observations to match the declared observation-space dtype.
+        """
+        return np.asarray(obs, dtype=np.float32)
+
     def reset(self, seed=None, options=None):
         """
         Reset the environment to its initial state and time.
@@ -117,10 +125,10 @@ class OrbitalEnv(ParallelEnv):
             for agent_id, config in self.agent_configs.items()
         }
 
-        observations = {
-            agent_id: agent.get_observation(self._agent_states)
-            for agent_id, agent in self._agent_states.items()
-        }
+        observations = {}
+        for agent_id, agent in self._agent_states.items():
+            raw_obs = agent.get_observation(self._agent_states)
+            observations[agent_id] = self._sanitize_observation(raw_obs)
 
         infos = {agent_id: {} for agent_id in self.agents}
 
@@ -173,10 +181,10 @@ class OrbitalEnv(ParallelEnv):
         rewards = {aid: float(rewards_raw.get(aid, 0.0)) for aid in self.agents}
 
         # Observations after state update
-        observations = {
-            agent_id: agent.get_observation(self._agent_states)
-            for agent_id, agent in self._agent_states.items()
-        }
+        observations = {}
+        for agent_id, agent in self._agent_states.items():
+            raw_obs = agent.get_observation(self._agent_states)
+            observations[agent_id] = self._sanitize_observation(raw_obs)
 
         # Episode termination and truncation
         # Terminate on any critical flag (collision, intercept, no fuel)
@@ -216,10 +224,10 @@ class OrbitalEnv(ParallelEnv):
         obs_dim = 7 * num_agents
 
         return Box(
-            low=-10.0,
-            high=10.0,
+            low=np.full((obs_dim,), -10.0, dtype=np.float32),
+            high=np.full((obs_dim,), 10.0, dtype=np.float32),
             shape=(obs_dim,),
-            dtype=np.float32
+            dtype=np.float32,
         )
 
     def action_space(self, agent_id):
@@ -236,10 +244,42 @@ class OrbitalEnv(ParallelEnv):
             gymnasium.spaces.Box: Bounded 3D continuous action space [km/s].
         """
         # 3D delta-v vector in selected maneuver frame, bounded by max delta-v
-        return Box(low=-self.max_delta_v,
-                   high=self.max_delta_v,
-                   shape=(3,),
-                   dtype=np.float32)
+        max_dv = np.float32(self.max_delta_v)
+        return Box(
+            low=np.full((3,), -max_dv, dtype=np.float32),
+            high=np.full((3,), max_dv, dtype=np.float32),
+            shape=(3,),
+            dtype=np.float32,
+        )
+
+    def get_position_km(self, agent_id: str) -> np.ndarray:
+        """
+        Return the current ECI position of one agent in kilometers.
+        """
+        r, _ = self._agent_states[agent_id].orbit_state.get_rv()
+        return np.asarray(r.to_value(u.km), dtype=float)
+
+    def get_remaining_delta_v_kms(self, agent_id: str) -> float:
+        """
+        Return the current remaining delta-v budget of one agent in km/s.
+        """
+        return float(self._agent_states[agent_id].get_remaining_delta_v().to_value(u.km / u.s))
+
+    def get_pairwise_distances_km(self) -> dict:
+        """
+        Return pairwise distances between all current agents in kilometers.
+        """
+        distances = {}
+        agent_ids = list(self.agents)
+        for i, aid in enumerate(agent_ids):
+            for bid in agent_ids[i + 1 :]:
+                distances[f"{aid}__{bid}"] = float(
+                    compute_eci_distance(
+                        self._agent_states[aid].orbit_state,
+                        self._agent_states[bid].orbit_state,
+                    )
+                )
+        return distances
 
     def render(self):
         """

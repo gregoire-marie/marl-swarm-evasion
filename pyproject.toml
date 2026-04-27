@@ -19,4 +19,5 @@ dependencies = [
     "tensorboard==2.17.0",
     "setuptools==56.0.0",
     "tensorflow==2.17.1",
+    "rg==0.0.76",
 ]

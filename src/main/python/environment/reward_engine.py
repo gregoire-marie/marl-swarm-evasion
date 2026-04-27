@@ -5,7 +5,7 @@ from astropy.time import Time
 from typing import Dict, Optional, Tuple
 
 from src.main.python.agents.satellite_agent import SatelliteAgent
-from src.main.python.orbital_meca.orbits import compute_eci_distance
+from src.main.python.orbital_meca.orbits import compute_eci_distance, compute_altitude_km
 from src.main.python.utils.constants import DEFAULT_OBJECTIVES, DEFAULT_REWARD_WEIGHTS
 from typing import Callable
 
@@ -118,6 +118,7 @@ def compute_rewards(
         "interceptors_coll": False,
         "targets_coll": False,
         "no_fuel": False,
+        "reentry": False,
     }
 
     interceptors = {k: a for k, a in agent_states.items() if a.role == "interceptor"}
@@ -189,4 +190,10 @@ def compute_rewards(
 
         rewards[agent_id] += fuel_penalty_fn(dv_used)
 
+    # === Reentry termination criterium (all agents) ===
+    for agent_id, agent in agent_states.items():
+        curr_alt = compute_altitude_km(agent.orbit_state)
+
+        if curr_alt < objectives["reentry_altitude_km"]:
+            flags["reentry"] = True
     return rewards, flags

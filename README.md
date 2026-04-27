@@ -31,11 +31,14 @@ Maneuvers are supported in both the inertial `ECI` frame and the local `TNW` fra
    ```
 2. **Run training (PPO)**:
    ```bash
-   # Simple run (1 interceptor, 1 target)
-   make train
-
-   # Advanced run with custom parameters
-   uv run python app/train.py --n-interceptors 3 --n-targets 1 --iterations 100 --num-workers 4 --maneuver-frame TNW
+   # Train with custom parameters
+   uv run python app/train.py --name ppo_3i_1t_tnw --n-interceptors 3 --n-targets 1 --iterations 100 --num-workers 4 --maneuver-frame TNW
+   ```
+   
+3. **Run inference**:
+   ```bash
+   # Inference with custom parameters
+   uv run python app/infer.py checkpoint --n-interceptors 3 --n-targets 1 --episode-length 250 --num-workers 4 --maneuver-frame TNW
    ```
 
 ## Testing
@@ -90,19 +93,19 @@ uv run python app/train.py [OPTIONS]
 
 - **Small scale training**:
   ```bash
-  uv run python app/train.py --n-interceptors 1 --n-targets 1 --iterations 50
+  uv run python app/train.py --name ppo_small_1v1 --n-interceptors 1 --n-targets 1 --freeze-targets
   ```
-- **Parallelized training**:
+- **Fully parametrized training**:
   ```bash
-  uv run python app/train.py --n-interceptors 5 --n-targets 2 --num-workers 8 --batch-size 10000
+  uv run python app/train.py --name ppo_small_1v1 --n-interceptors 1 --n-targets 1 --freeze-targets --maneuver-frame tnw --timestep 60.0 --episode-length 100 --iterations 20 --batch-size 1000 --lr 0.0001 --gamma 0.99 --num-epochs 10 --seed 42 --num-workers 8 --checkpoint-freq 10 --local-dir "~/results/marl-swarm-evasion/ray_results"
   ```
 - **Train with TNW maneuvers**:
   ```bash
-  uv run python app/train.py --n-interceptors 2 --n-targets 1 --maneuver-frame tnw
+  uv run python app/train.py --name ppo_tnw_2v1 --n-interceptors 2 --n-targets 1 --maneuver-frame tnw
   ```
 - **Resume from a previous run**:
   ```bash
-  uv run python app/train.py --resume --local-dir ~/results/marl-swarm-evasion/ray_results
+  uv run python app/train.py --resume --name ppo_tnw_2v1 --local-dir ~/results/marl-swarm-evasion/ray_results
   ```
 
 ### Command-line Arguments
@@ -121,12 +124,14 @@ uv run python app/train.py [OPTIONS]
 | `--batch-size` | int | 4000                                       | Training batch size : number of environment timesteps (across all workers) before a weight update. Cause: at least `batch-size`/`episode-length` episodes are performed. |
 | `--lr` | float | 5e-5                                       | Learning rate.                                                                                                                                                           |
 | `--gamma` | float | 0.99                                       | Discount factor.                                                                                                                                                         |
+| `--num-epochs` | int | 10                                         | Number of SGD epochs applied to each training batch (`num_epochs` in RLlib PPO).                                                                                       |
 | `--seed` | int | 42                                         | Random seed.                                                                                                                                                             |
 | **Execution** | |                                            |                                                                                                                                                                          |
 | `--num-workers` | int | 1                                          | Number of rollout workers (parallel envs).                                                                                                                               |
 | `--num-gpus` | float | 0                                          | Number of GPUs (can be fractional).                                                                                                                                      |
 | `--checkpoint-freq`| int | 1                                          | Frequency of checkpointing.                                                                                                                                              |
 | `--resume` | flag | -                                          | Resume training from the last checkpoint.                                                                                                                                |
+| `--name` | str | -                                          | Name of the experiment (used as the results subdirectory).                                                                                                              |
 | `--local-dir` | str | `~/results/marl-swarm-evasion/ray_results` | Directory for results and checkpoints.                                                                                                                                   |
 
 ## Monitoring
@@ -141,9 +146,9 @@ Point TensorBoard to your results directory (default is `~/results/marl-swarm-ev
 tensorboard --logdir ~/results/marl-swarm-evasion/ray_results
 ```
 
-### Automatic Layout (Custom Scalars)
+### Dashboard Layout
 
-The training script automatically configures a **"Custom Scalars"** dashboard in TensorBoard. When you open TensorBoard, look for the "Custom Scalars" tab at the top. This page is pre-configured to always display the most important orbital metrics in organized groups:
+Use this page to track the most important metrics:
 
 *   **Success and Failures**: `intercept_success_rate` and `out_of_fuel_rate`.
 *   **Collisions**: `interceptors_collision_rate` and `targets_collision_rate`.
@@ -154,7 +159,7 @@ The training script automatically configures a **"Custom Scalars"** dashboard in
 
 In the TensorBoard dashboard, you will find several categories of metrics:
 
-1.  **Ray RLlib Standard Metrics**:
+1.  **Default Ray RLlib Metrics**:
     *   `ray/tune/env_runners/episode_return_mean`: Overall performance of all agents.
     *   `ray/tune/info/learner/<policy_id>/learner_stats/policy_loss`: Training stability.
 
@@ -163,6 +168,7 @@ In the TensorBoard dashboard, you will find several categories of metrics:
     *   `interceptors_collision_rate`: Rate of collisions between interceptors.
     *   `targets_collision_rate`: Rate of collisions between targets.
     *   `out_of_fuel_rate`: Percentage of episodes ending because agents ran out of Δv.
+    *   `reentry_rate`: Percentage of episodes ending because agents reentered the atmosphere.
     *   `episode_steps`: Average number of steps per episode (shorter episodes often indicate early collisions or successes).
 
 These metrics provide a direct view of whether your agents are actually learning the desired orbital behaviors or just maximizing rewards through unintended shortcuts.
@@ -173,10 +179,10 @@ After training your agents, you can run an inference session to visualize the or
 
 ### Running Inference
 
-Use the `app/inference.py` script to load a checkpoint and run a single episode:
+Use the `app/infer.py` script to load a checkpoint and run a single episode:
 
 ```bash
-uv run python app/inference.py /path/to/checkpoint --n-interceptors 1 --n-targets 1 --episode-length 100 --maneuver-frame tnw
+uv run python app/infer.py checkpoint --n-interceptors 1 --n-targets 1 --episode-length 100 --maneuver-frame tnw
 ```
 
 ### Command-line Arguments (Inference)
@@ -240,7 +246,7 @@ marl-swarm-evasion/
 │
 ├── app/                            # Entry points and scripts
 │   ├── train.py                    # RLlib training script (PPO)
-│   ├── inference.py                # Inference and visualization script
+│   ├── infer.py                # Inference and visualization script
 │   └── visualize_rewards.py        # Reward shaping visualization tool
 │
 ├── docs/                           # Documentation and diagrams
