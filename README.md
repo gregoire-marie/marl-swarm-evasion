@@ -8,7 +8,9 @@
 This is a project about swarm interceptor satellites evasion using multi-agent reinforcement learning.
 
 ## Overview
-A mixed target and interceptor satellite swarms cooperative-competitive environment, enabling multi-agent policy optimization with deep reinforcement learning using algorithms such as [MADDPG](https://arxiv.org/pdf/1706.02275) or [PPO](https://arxiv.org/abs/1707.06347). 
+A mixed target and interceptor satellite swarms cooperative-competitive environment, enabling multi-agent policy optimization with deep reinforcement learning. The current training entry point uses [PPO](https://arxiv.org/abs/1707.06347) through Ray RLlib.
+
+[MADDPG](https://arxiv.org/pdf/1706.02275) is a relevant future algorithm for this setting, but it is not implemented yet.
 
 Target satellites learn to evade a swarm of interceptor satellites dynamically learning seek-and-destroy strategies.
 Maneuvers are supported in both the inertial `ECI` frame and the local `TNW` frame.
@@ -40,7 +42,7 @@ See [docs/architecture.md](docs/architecture.md) for diagrams of the training/in
 3. **Run inference**:
    ```bash
    # Inference with custom parameters
-   uv run python app/infer.py checkpoint --n-interceptors 3 --n-targets 1 --episode-length 250 --num-workers 4 --maneuver-frame TNW
+   uv run python app/infer.py checkpoint --n-interceptors 3 --n-targets 1 --episode-length 250 --maneuver-frame TNW
    ```
 
 ## Testing
@@ -190,17 +192,18 @@ uv run python app/infer.py checkpoint --n-interceptors 1 --n-targets 1 --episode
 
 ### Command-line Arguments (Inference)
 
-| Argument | Type | Default                 | Description                                           |
-| :--- | :--- |:------------------------|:------------------------------------------------------|
-| `checkpoint` | str | -                       | **Required**. Path to the RLlib checkpoint directory. |
-| `--n-interceptors` | int | 1                       | Number of interceptor agents.                         |
-| `--n-targets` | int | 1                       | Number of target agents.                              |
-| `--timestep` | float | 60.0                    | Simulation timestep in seconds.                       |
-| `--episode-length` | int | 100                     | Number of steps per episode.                          |
-| `--max-delta-v-mps` | float | 20.0                    | Maximum single-maneuver delta-v in m/s.              |
-| `--maneuver-frame` | str | `eci`                   | Maneuver frame used for actions: `eci` or `tnw`.      |
-| `--seed` | int | 42                      | Random seed for the scenario.                         |
-| `--out-dir` | str | `$checkpoint/inference` | Directory to save generated plots.                    |
+| Argument | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `checkpoint` | str | - | **Required**. Path to a run directory with `checkpoint_*` folders, or directly to a specific checkpoint directory. |
+| `--n-interceptors` | int | checkpoint config | Override the number of interceptor agents. |
+| `--n-targets` | int | checkpoint config | Override the number of target agents. |
+| `--timestep` | float | checkpoint config | Override the simulation timestep in seconds. |
+| `--episode-length` | int | checkpoint config | Override the number of steps per episode. |
+| `--max-delta-v-mps` | float | checkpoint config | Override the maximum single-maneuver delta-v in m/s. |
+| `--freeze-targets` / `--no-freeze-targets` | bool | checkpoint config | Override whether target agents are forced to apply zero Δv. |
+| `--maneuver-frame` | str | checkpoint config | Override the maneuver frame used for actions: `eci` or `tnw`. |
+| `--seed` | int | checkpoint config | Override the random seed for the scenario. |
+| `--out-dir` | str | `$checkpoint/inference` | Directory to save generated plots. |
 
 ### Generated Plots
 
@@ -237,10 +240,13 @@ The script produces several plots in the output directory:
 - **Orbital Environment Builder**: Creates an environment containing target and interceptor satellites. *Based on [`Poliastro`](https://docs.poliastro.space/en/stable/) and [`Astropy`](https://www.astropy.org/)*. Manages:
   - Orbital propagation,
   - Orbital maneuvers,
-  - Proximity approach computation,
-  - Collision probability estimation.
-- **Policy Learning**: Teach interceptors to track targets and targets to evade collisions using fuel-efficient maneuvers. Supports algorithms such as **MADDPG** and **PPO** via RLlib.
-- **Parametric Scenarios**: Easily configure orbital regions (LEO/MEO/GEO), swarm size, maneuvering capacity, and mission objectives.
+  - Pairwise distance checks,
+  - Closest-approach utilities.
+- **Not implemented yet**: Collision probability estimation is not wired into the environment.
+- **Policy Learning**: Teach interceptors to track targets and targets to evade collisions using fuel-efficient maneuvers. The implemented training path uses **PPO** via RLlib.
+- **Not implemented yet**: MADDPG support is not currently available.
+- **Parametric Scenarios**: Configure LEO pursuit-evasion scenarios with swarm size, maneuvering capacity, and mission objectives.
+- **Not implemented yet**: MEO/GEO scenario builders are not currently available.
 - **Modular Reward Engine**: Pluggable reward shaping functions (reciprocal distance, logarithmic, quadratic) for different mission goals.
 - **Visualization Tools**: Utilities to visualize reward landscapes and simulation results.
 
@@ -250,10 +256,12 @@ marl-swarm-evasion/
 │
 ├── app/                            # Entry points and scripts
 │   ├── train.py                    # RLlib training script (PPO)
-│   ├── infer.py                # Inference and visualization script
+│   ├── infer.py                    # Inference and visualization script
 │   └── visualize_rewards.py        # Reward shaping visualization tool
 │
 ├── docs/                           # Documentation and diagrams
+│   ├── architecture.md             # Runtime architecture and step lifecycle
+│   └── class_diagram.md            # Earlier class/workflow sketch
 │
 ├── src/
 │   └── main/
@@ -272,10 +280,12 @@ marl-swarm-evasion/
 │           │   └── orbits.py          # ECI distance & orbital utilities
 │           │
 │           └── utils/              # Shared utilities
+│               ├── callbacks.py       # RLlib metrics callbacks
 │               ├── constants.py       # Physical & environment constants
 │               ├── helpers.py         # Logging & unit conversions
 │               ├── normalization.py   # Observation scaling
 │               ├── random.py          # Seeding & reproducibility
+│               ├── rllib_setup.py     # RLlib config, policies, env factories
 │               └── units.py           # Unit guardrails
 │
 ├── tests/                          # Test suite
@@ -293,4 +303,4 @@ Unauthorized copying, distribution, modification, or sale of this software,
 via any medium, is strictly prohibited without prior written permission.
 
 ## Keywords
-MARL, Multi-Agent Reinforcement Learning, MADDPG, ASAT, Anti-Satellite
+MARL, Multi-Agent Reinforcement Learning, PPO, MADDPG-planned, ASAT, Anti-Satellite
