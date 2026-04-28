@@ -13,6 +13,8 @@ A mixed target and interceptor satellite swarms cooperative-competitive environm
 Target satellites learn to evade a swarm of interceptor satellites dynamically learning seek-and-destroy strategies.
 Maneuvers are supported in both the inertial `ECI` frame and the local `TNW` frame.
 
+See [docs/architecture.md](docs/architecture.md) for diagrams of the training/inference architecture and environment step lifecycle.
+
 ## Quick Start
 ### Requirements
 - **Hardware**: A good GPU.
