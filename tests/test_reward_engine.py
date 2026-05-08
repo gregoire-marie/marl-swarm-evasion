@@ -4,7 +4,11 @@ from astropy import units as u
 from astropy.time import Time
 
 from src.main.python.agents.satellite_agent import SatelliteAgent
-from src.main.python.environment.reward_engine import compute_rewards
+from src.main.python.environment.reward_engine import (
+    ENGINE_VERSION,
+    SUPPORTED_ENGINE_VERSIONS,
+    compute_rewards,
+)
 from src.main.python.utils.constants import DEFAULT_OBJECTIVES, DEFAULT_REWARD_WEIGHTS
 
 # === Fixtures ===
@@ -38,6 +42,28 @@ def default_agent(agent_id, role, orbit, epoch, delta_v=1000.0 * u.m / u.s):
 
 # === Tests ===
 
+def test_reward_engine_default_version_is_supported():
+    assert ENGINE_VERSION in SUPPORTED_ENGINE_VERSIONS
+
+
+def test_compute_rewards_uses_configured_engine_version(
+    default_epoch,
+    default_orbit_near,
+    default_orbit_far,
+):
+    i1 = default_agent("i1", "interceptor", default_orbit_near, default_epoch)
+    t1 = default_agent("t1", "target", default_orbit_far, default_epoch)
+    agents = {"i1": i1, "t1": t1}
+
+    default_rewards, default_flags = compute_rewards(agents)
+    configured_rewards, configured_flags = compute_rewards(agents, engine_version=ENGINE_VERSION)
+
+    assert default_flags == configured_flags
+    assert default_rewards.keys() == configured_rewards.keys()
+    for agent_id in default_rewards:
+        assert np.isclose(default_rewards[agent_id], configured_rewards[agent_id])
+
+
 def test_interception_success(default_epoch, default_orbit_near):
     i1 = default_agent("i1", "interceptor", default_orbit_near, default_epoch)
     t1 = default_agent("t1", "target", default_orbit_near, default_epoch)
@@ -56,16 +82,35 @@ def test_interception_success(default_epoch, default_orbit_near):
     assert rewards["t1"] < 0.0  # evasion failure = penalized
 
 
-def test_interception_shaping(default_epoch, default_orbit_near, default_orbit_far):
+def test_reward_engine_v2(default_epoch, default_orbit_near, default_orbit_far):
     i1 = default_agent("i1", "interceptor", default_orbit_near, default_epoch)
     t1 = default_agent("t1", "target", default_orbit_far, default_epoch)
 
     agents = {"i1": i1, "t1": t1}
-    rewards, flags = compute_rewards(agents)
+    rewards, flags = compute_rewards(agents, engine_version="v2")
+
+    assert not flags["intercept_success"]
+    assert rewards["i1"] > 0.0
+    assert np.isclose(rewards["t1"], 0.0)
+
+
+def test_reward_engine_v1(default_epoch, default_orbit_near, default_orbit_far):
+    i1 = default_agent("i1", "interceptor", default_orbit_near, default_epoch)
+    t1 = default_agent("t1", "target", default_orbit_far, default_epoch)
+
+    agents = {"i1": i1, "t1": t1}
+    rewards, flags = compute_rewards(agents, engine_version="v1")
 
     assert not flags["intercept_success"]
     assert rewards["i1"] > 0.0
     assert rewards["t1"] > 0.0
+
+
+def test_reward_engine_v3(default_epoch, default_orbit_near):
+    i1 = default_agent("i1", "interceptor", default_orbit_near, default_epoch)
+
+    with pytest.raises(ValueError, match="Unsupported reward engine version"):
+        compute_rewards({"i1": i1}, engine_version="v3")
 
 
 def test_same_role_dispersion_and_collision(default_epoch, default_orbit_near, default_orbit_far):
@@ -111,12 +156,18 @@ def test_interceptor_collision(default_epoch, default_orbit_near):
 
 def test_fuel_penalty_and_no_fuel(default_epoch, default_orbit_near):
     agent = default_agent("s1", "target", default_orbit_near, default_epoch)
-    agent.used_delta_v = 1500.0 * u.m / u.s
 
+    # Test before fuel depletion
+    agent.last_action_delta_v = 10.0 * u.m / u.s
     rewards, flags = compute_rewards({"s1": agent})
+    expected = DEFAULT_REWARD_WEIGHTS["fuel_penalty"] * agent.last_action_delta_v.value
+    assert np.isclose(rewards["s1"], expected, rtol=1e-2)
 
+    # Test after fuel depletion
+    agent.used_delta_v = 1500.0 * u.m / u.s
+    rewards, flags = compute_rewards({"s1": agent})
     assert flags["no_fuel"]
-    expected = DEFAULT_REWARD_WEIGHTS["fuel_penalty"] * 1500.0
+    expected = DEFAULT_REWARD_WEIGHTS["no_fuel_penalty"]
     assert np.isclose(rewards["s1"], expected, rtol=1e-2)
 
 
@@ -160,11 +211,11 @@ def test_mixed_constellation_flags_and_rewards(default_epoch, default_orbit_near
 
 def test_reward_gradient_saturation():
     from src.main.python.environment.reward_engine import (
-        objective_d_shaping_generator, zero_d_shaping_generator, linear_reward_generator
+        objective_d_shaping_generator_v1, zero_d_shaping_generator_v1, linear_reward_generator
     )
 
-    soft_fn = objective_d_shaping_generator(objective=100.0, w=1.0)
-    hard_fn = zero_d_shaping_generator(w=10.0)
+    soft_fn = objective_d_shaping_generator_v1(objective=100.0, w=1.0)
+    hard_fn = zero_d_shaping_generator_v1(w=10.0)
     linear_fn = linear_reward_generator(w=-1.0)
 
     # Soft shaping saturates
