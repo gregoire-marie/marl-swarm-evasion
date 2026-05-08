@@ -151,6 +151,134 @@ uv run python app/train.py [OPTIONS]
 | `--name` | str | -                                          | Name of the experiment (used as the results subdirectory).                                                                                                              |
 | `--local-dir` | str | `~/results/marl-swarm-evasion/ray_results` | Directory for results and checkpoints.                                                                                                                                   |
 
+## Curriculum Training
+
+`app/curriculum_train.py` runs one continuous RLlib PPO/Tune experiment and lets `CurriculumCallbacks.on_train_result()` advance stages. It requires a JSON curriculum file; stage thresholds are intentionally config-owned rather than hidden in code defaults.
+
+```bash
+uv run python app/curriculum_train.py \
+  --curriculum-config configs/curriculum_1v1_to_nvm.json \
+  --iterations 200 \
+  --batch-size 4000 \
+  --num-workers 4 \
+  --checkpoint-freq 10
+```
+
+Curriculum runs always use two fixed policies:
+
+- `interceptor_policy`
+- `target_policy`
+
+Agent IDs are mapped by prefix: `interceptor_*` uses `interceptor_policy`, and `target_*` uses `target_policy`. The environment keeps fixed maximum capacity for the whole run (`N_max`, `M_max`), and all stages share the same RLlib observation and action spaces.
+
+### Curriculum JSON Example
+
+```json
+{
+  "N_max": 4,
+  "M_max": 3,
+  "timestep": 60.0,
+  "start_time": "2025-01-01 00:00:00",
+  "seed": 42,
+  "stages": [
+    {
+      "stage_id": "S1",
+      "n_interceptors": 1,
+      "n_targets": 1,
+      "disabled_actions": ["targets"],
+      "frozen_policies": [],
+      "trainable_policies": ["interceptor_policy"],
+      "maneuver_frame": "ECI",
+      "propagator": "keplerian",
+      "initial_condition_distribution": "pursuit_evasion",
+      "max_delta_v_mps": 20.0,
+      "episode_length": 100,
+      "advance_when": {
+        "min_iterations": 5,
+        "consecutive_iterations": 3,
+        "conditions": [
+          {
+            "metric": "intercept_success_rate",
+            "operator": ">",
+            "threshold": 0.8
+          }
+        ]
+      }
+    },
+    {
+      "stage_id": "S2",
+      "n_interceptors": 1,
+      "n_targets": 1,
+      "disabled_actions": [],
+      "frozen_policies": ["interceptor_policy"],
+      "trainable_policies": ["target_policy"],
+      "maneuver_frame": "ECI",
+      "propagator": "keplerian",
+      "initial_condition_distribution": "pursuit_evasion",
+      "max_delta_v_mps": 20.0,
+      "episode_length": 100,
+      "advance_when": {
+        "min_iterations": 5,
+        "consecutive_iterations": 3,
+        "conditions": [
+          {
+            "metric": "target_survival_rate",
+            "operator": ">",
+            "threshold": 0.8
+          }
+        ]
+      }
+    },
+    {
+      "stage_id": "S3",
+      "n_interceptors": 1,
+      "n_targets": 1,
+      "disabled_actions": [],
+      "frozen_policies": [],
+      "trainable_policies": ["interceptor_policy", "target_policy"],
+      "maneuver_frame": "ECI",
+      "propagator": "keplerian",
+      "initial_condition_distribution": "pursuit_evasion",
+      "max_delta_v_mps": 20.0,
+      "episode_length": 100,
+      "advance_when": {
+        "min_iterations": 10,
+        "consecutive_iterations": 2,
+        "conditions": [
+          {
+            "metric": "collision_rate",
+            "operator": "<",
+            "threshold": 0.1
+          }
+        ],
+        "plateau": {
+          "metric": "episode_return_mean",
+          "window": 5,
+          "min_delta": 0.01
+        }
+      }
+    },
+    {
+      "stage_id": "S4",
+      "n_interceptors": 4,
+      "n_targets": 3,
+      "disabled_actions": [],
+      "frozen_policies": [],
+      "trainable_policies": ["interceptor_policy", "target_policy"],
+      "maneuver_frame": "TNW",
+      "propagator": "keplerian",
+      "initial_condition_distribution": "pursuit_evasion",
+      "max_delta_v_mps": 20.0,
+      "episode_length": 150
+    }
+  ]
+}
+```
+
+Non-final stages must define `advance_when`. The final stage must not define `advance_when`; it continues until the normal `--iterations` stopping criterion. Supported `operator` values are `>`, `>=`, `<`, `<=`, and `==`.
+
+Disabled teams remain physically present but are omitted from RLlib observations, so no actions are computed for them. Frozen-policy teams are still controllable and act through their mapped policy, but `policies_to_train` skips optimizer updates for batches collected under that stage.
+
 ## Monitoring
 
 You can monitor the training progress in real-time using **TensorBoard**. This allows you to track not only the rewards but also domain-specific success metrics.
