@@ -1,14 +1,9 @@
-import numpy as np
 import pytest
-from ray.rllib.policy.sample_batch import SampleBatch
 
 from src.main.python.experiment.curriculum import CurriculumConfig
 from src.main.python.utils.callbacks import CurriculumCallbacks, OrbitalPhysicsCallbacks
 from src.main.python.utils.rllib_setup import (
-    CURRICULUM_N_INTERCEPTORS,
-    CURRICULUM_N_TARGETS,
-    CURRICULUM_STAGE_ID,
-    CURRICULUM_STAGE_INDEX,
+    ACTIVE_CURRICULUM_STAGE_INDEX,
 )
 
 
@@ -51,39 +46,101 @@ class BrokenOldApiEpisode:
 class FakeConfig:
     def __init__(self, env_config):
         self.env_config = env_config
+        self.policies_to_train = None
+
+    def environment(self, *, env_config):
+        for key, value in env_config.items():
+            if key == "orbital_env_config":
+                self.env_config.setdefault("orbital_env_config", {}).update(value)
+            else:
+                self.env_config[key] = value
+
+    def multi_agent(self, *, policies_to_train):
+        self.policies_to_train = list(policies_to_train)
 
 
-class FakeOrbitalEnv:
-    def __init__(self):
-        self.tasks = []
-        self._task = None
+class FakeEnvRunner:
+    def __init__(self, curriculum, *, worker_id, has_env=True):
+        self.worker_id = worker_id
+        self.config = FakeConfig(
+            {
+                "curriculum": curriculum.to_dict(),
+                "orbital_env_config": {"curriculum": curriculum.to_dict()},
+                ACTIVE_CURRICULUM_STAGE_INDEX: 0,
+            }
+        )
+        self.env = object() if has_env else None
+        self.make_env_calls = 0
 
-    def set_task(self, task):
-        self.tasks.append(task["stage_id"])
-        self._task = task
-
-    def get_task(self):
-        class Task:
-            pass
-
-        task = Task()
-        task.stage_id = self._task["stage_id"]
-        return task
+    def make_env(self):
+        self.make_env_calls += 1
 
 
 class FakeEnvRunnerGroup:
-    def __init__(self, envs):
-        self.envs = envs
+    def __init__(self, local_env_runner, remote_env_runners):
+        self.local_env_runner = local_env_runner
+        self.remote_env_runners = {
+            env_runner.worker_id: env_runner for env_runner in remote_env_runners
+        }
+        self.calls = []
 
-    def foreach_env(self, fn):
-        return [[fn(env)] for env in self.envs]
+    def foreach_env_runner(
+        self,
+        func,
+        *,
+        remote_worker_ids=None,
+        local_env_runner=True,
+    ):
+        self.calls.append(
+            {
+                "remote_worker_ids": remote_worker_ids,
+                "local_env_runner": local_env_runner,
+            }
+        )
+        results = []
+        if local_env_runner and self.local_env_runner is not None:
+            results.append(func(self.local_env_runner))
+        worker_ids = remote_worker_ids or list(self.remote_env_runners)
+        for worker_id in worker_ids:
+            results.append(func(self.remote_env_runners[worker_id]))
+        return results
+
+
+class FakeLearner:
+    def __init__(self):
+        self.config = FakeConfig({})
+
+
+class FakeLearnerGroup:
+    def __init__(self):
+        self.learners = [FakeLearner()]
+        self.calls = []
+
+    def foreach_learner(self, *, func, timeout_seconds=None):
+        self.calls.append(timeout_seconds)
+        for learner in self.learners:
+            func(learner)
 
 
 class FakeAlgorithm:
     def __init__(self, curriculum):
-        self.config = FakeConfig({"curriculum": curriculum.to_dict()})
-        self.envs = [FakeOrbitalEnv(), FakeOrbitalEnv()]
-        self.env_runner_group = FakeEnvRunnerGroup(self.envs)
+        self.config = FakeConfig(
+            {
+                "curriculum": curriculum.to_dict(),
+                "orbital_env_config": {"curriculum": curriculum.to_dict()},
+                ACTIVE_CURRICULUM_STAGE_INDEX: 0,
+            }
+        )
+        self.local_env_runner = FakeEnvRunner(curriculum, worker_id=0, has_env=False)
+        self.remote_env_runners = [
+            FakeEnvRunner(curriculum, worker_id=1),
+            FakeEnvRunner(curriculum, worker_id=2),
+        ]
+        self.env_runner_group = FakeEnvRunnerGroup(
+            self.local_env_runner,
+            self.remote_env_runners,
+        )
+        self.learner_group = FakeLearnerGroup()
 
 
 def curriculum_for_callback_tests():
@@ -236,24 +293,38 @@ def test_curriculum_callback_initializes_and_advances_after_consecutive_success(
     callback = CurriculumCallbacks()
 
     callback.on_algorithm_init(algorithm=algorithm)
-    assert [env.tasks for env in algorithm.envs] == [["S1"], ["S1"]]
+    assert algorithm.env_runner_group.calls == []
+    assert algorithm.learner_group.calls == []
+    assert [runner.make_env_calls for runner in algorithm.remote_env_runners] == [0, 0]
 
     result = {"env_runners": {"intercept_success_rate": 1.0}}
     callback.on_train_result(algorithm=algorithm, result=result)
     assert result["curriculum/stage_id"] == "S1"
     assert result["curriculum/stage_index"] == 0
     assert callback.current_stage_index == 0
+    assert algorithm.env_runner_group.calls == []
 
     result = {"env_runners": {"intercept_success_rate": 1.0}}
     callback.on_train_result(algorithm=algorithm, result=result)
     assert result["curriculum/stage_id"] == "S1"
+    assert algorithm.env_runner_group.calls == []
 
     result = {"env_runners": {"intercept_success_rate": 1.0}}
     callback.on_train_result(algorithm=algorithm, result=result)
     assert result["curriculum/stage_id"] == "S2"
     assert result["curriculum/stage_index"] == 1
     assert result["curriculum/stage_transition_count"] == 1
-    assert [env.tasks for env in algorithm.envs] == [["S1", "S2"], ["S1", "S2"]]
+    assert algorithm.learner_group.learners[0].config.policies_to_train == ["target_policy"]
+    assert algorithm.env_runner_group.calls == [
+        {"remote_worker_ids": None, "local_env_runner": True}
+    ]
+    assert algorithm.local_env_runner.config.policies_to_train == ["target_policy"]
+    assert algorithm.local_env_runner.make_env_calls == 0
+    assert [runner.config.env_config[ACTIVE_CURRICULUM_STAGE_INDEX] for runner in algorithm.remote_env_runners] == [
+        1,
+        1,
+    ]
+    assert [runner.make_env_calls for runner in algorithm.remote_env_runners] == [1, 1]
 
 
 def test_curriculum_callback_plateau_transition():
@@ -270,52 +341,45 @@ def test_curriculum_callback_plateau_transition():
 
     assert callback.current_stage_index == 2
     assert result["curriculum/stage_id"] == "S3"
+    assert algorithm.learner_group.learners[0].config.policies_to_train == [
+        "interceptor_policy",
+        "target_policy",
+    ]
 
 
-def test_curriculum_callback_adds_batch_audit_metadata():
+def test_curriculum_callback_reapplies_stage_to_recreated_env_runners():
+    curriculum = curriculum_for_callback_tests()
+    algorithm = FakeAlgorithm(curriculum)
     callback = CurriculumCallbacks()
-    batch = SampleBatch(
-        {
-            SampleBatch.INFOS: np.asarray(
-                [
-                    {
-                        CURRICULUM_STAGE_ID: "S1",
-                        CURRICULUM_STAGE_INDEX: 0,
-                        CURRICULUM_N_INTERCEPTORS: 1,
-                        CURRICULUM_N_TARGETS: 2,
-                    },
-                    {
-                        CURRICULUM_STAGE_ID: "S1",
-                        CURRICULUM_STAGE_INDEX: 0,
-                        CURRICULUM_N_INTERCEPTORS: 1,
-                        CURRICULUM_N_TARGETS: 2,
-                    },
-                ],
-                dtype=object,
-            )
-        }
+    callback.on_algorithm_init(algorithm=algorithm)
+    callback.current_stage_index = 1
+
+    callback.on_env_runners_recreated(
+        algorithm=algorithm,
+        env_runner_group=algorithm.env_runner_group,
+        env_runner_indices=[2],
+        is_evaluation=False,
     )
 
-    callback.on_postprocess_trajectory(
-        worker=None,
-        episode=None,
-        agent_id="interceptor_0",
-        policy_id="interceptor_policy",
-        policies={},
-        postprocessed_batch=batch,
-        original_batches={},
-    )
-
-    assert np.array_equal(batch[CURRICULUM_STAGE_INDEX], np.array([0, 0], dtype=np.int32))
-    assert np.array_equal(batch[CURRICULUM_N_INTERCEPTORS], np.array([1, 1], dtype=np.int32))
-    assert list(batch[CURRICULUM_STAGE_ID]) == ["S1", "S1"]
+    assert algorithm.env_runner_group.calls == [
+        {"remote_worker_ids": [2], "local_env_runner": False}
+    ]
+    assert algorithm.remote_env_runners[0].config.env_config[ACTIVE_CURRICULUM_STAGE_INDEX] == 0
+    assert algorithm.remote_env_runners[0].make_env_calls == 0
+    assert algorithm.remote_env_runners[1].config.env_config[ACTIVE_CURRICULUM_STAGE_INDEX] == 1
+    assert algorithm.remote_env_runners[1].config.policies_to_train == ["target_policy"]
+    assert algorithm.remote_env_runners[1].make_env_calls == 1
 
 
-def test_curriculum_callback_requires_env_runner_group():
+def test_curriculum_callback_requires_env_runner_group_on_transition():
     curriculum = curriculum_for_callback_tests()
     algorithm = FakeAlgorithm(curriculum)
     algorithm.env_runner_group = None
     callback = CurriculumCallbacks()
+    callback.on_algorithm_init(algorithm=algorithm)
 
     with pytest.raises(RuntimeError, match="env_runner_group.foreach_env"):
-        callback.on_algorithm_init(algorithm=algorithm)
+        result = {"env_runners": {"intercept_success_rate": 1.0}}
+        callback.on_train_result(algorithm=algorithm, result=result)
+        callback.on_train_result(algorithm=algorithm, result=result)
+        callback.on_train_result(algorithm=algorithm, result=result)

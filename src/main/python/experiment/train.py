@@ -12,7 +12,6 @@ from src.main.python.utils.callbacks import OrbitalPhysicsCallbacks
 from src.main.python.utils.constants import DEFAULT_START_TIME
 from src.main.python.utils.rllib_setup import (
     OrbitalRunSpec,
-    build_curriculum_policies_to_train,
     build_policies_to_train,
     build_policy_setup,
     build_rllib_env_config,
@@ -21,6 +20,7 @@ from src.main.python.utils.rllib_setup import (
     rllib_policy_mapping_fn,
     run_spec_from_args,
     save_run_parameters,
+    trainable_policies_for_stage,
 )
 
 
@@ -148,7 +148,7 @@ def setup_training(
     env_name = register_orbital_env()
     policy_setup = build_policy_setup(spec, curriculum_config=curriculum_config)
     policies_to_train = (
-        build_curriculum_policies_to_train(curriculum_config)
+        trainable_policies_for_stage(curriculum_config, 0)
         if curriculum_config is not None
         else build_policies_to_train(policy_setup["policies"].keys(), freeze_targets=spec.freeze_targets)
     )

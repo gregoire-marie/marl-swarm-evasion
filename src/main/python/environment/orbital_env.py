@@ -16,6 +16,7 @@ from src.main.python.utils.random import set_global_seed
 
 SUPPORTED_MANEUVER_FRAMES = {"ECI", "TNW"}
 CURRICULUM_OBS_FEATURES_PER_SLOT = 11
+ACTIVE_CURRICULUM_STAGE_INDEX = "active_curriculum_stage_index"
 
 
 class OrbitalEnv(ParallelEnv):
@@ -107,7 +108,7 @@ class OrbitalEnv(ParallelEnv):
         self._seed = None
         self._curriculum_config = self._load_curriculum_config(env_config)
         self._task = (
-            self._curriculum_config.stages[0]
+            self._curriculum_config.task_by_index(self._active_curriculum_stage_index(env_config))
             if self._curriculum_config is not None
             else self._default_task()
         )
@@ -120,6 +121,9 @@ class OrbitalEnv(ParallelEnv):
         if curriculum_data is None:
             return None
         return CurriculumConfig.from_mapping(curriculum_data)
+
+    def _active_curriculum_stage_index(self, env_config: Mapping[str, Any]) -> int:
+        return int(env_config.get(ACTIVE_CURRICULUM_STAGE_INDEX, 0))
 
     def _default_task(self) -> CurriculumTask:
         frozen_policies = []

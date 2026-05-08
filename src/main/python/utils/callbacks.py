@@ -1,21 +1,40 @@
 from collections import defaultdict
+from functools import partial
 from typing import Any, Dict, List, Mapping, Optional
-import numpy as np
 
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env import BaseEnv
 from ray.rllib.evaluation import RolloutWorker
 from ray.rllib.policy import Policy
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import PolicyID, EpisodeType
 
 from src.main.python.experiment.curriculum import CurriculumConfig, CurriculumTask
 from src.main.python.utils.rllib_setup import (
-    CURRICULUM_N_INTERCEPTORS,
-    CURRICULUM_N_TARGETS,
-    CURRICULUM_STAGE_ID,
-    CURRICULUM_STAGE_INDEX,
+    build_curriculum_stage_env_config_patch,
+    get_active_curriculum_stage_index,
+    trainable_policies_for_stage,
 )
+
+
+def configure_env_runner_for_curriculum_stage(
+    env_runner: Any,
+    *,
+    env_config_patch: Mapping[str, Any],
+    trainable_policies: List[str],
+) -> Optional[int]:
+    env_runner.config.environment(env_config=dict(env_config_patch))
+    env_runner.config.multi_agent(policies_to_train=list(trainable_policies))
+    if getattr(env_runner, "env", None) is not None:
+        env_runner.make_env()
+    return get_active_curriculum_stage_index(getattr(env_runner.config, "env_config", None))
+
+
+def configure_learner_for_curriculum_stage(
+    learner: Any,
+    *,
+    trainable_policies: List[str],
+) -> None:
+    learner.config.multi_agent(policies_to_train=list(trainable_policies))
 
 
 class OrbitalPhysicsCallbacks(DefaultCallbacks):
@@ -123,50 +142,6 @@ class CurriculumCallbacks(OrbitalPhysicsCallbacks):
         **kwargs,
     ) -> None:
         self._ensure_initialized(algorithm)
-        self._broadcast_task(algorithm, self._current_task())
-
-    def on_postprocess_trajectory(
-        self,
-        *,
-        worker: Any,
-        episode: Any,
-        agent_id: Any,
-        policy_id: str,
-        policies: Dict[str, Policy],
-        postprocessed_batch: SampleBatch,
-        original_batches: Dict[Any, Any],
-        **kwargs,
-    ) -> None:
-        infos = postprocessed_batch.get(SampleBatch.INFOS)
-        if infos is None:
-            infos = postprocessed_batch.get("infos")
-        if infos is None:
-            raise ValueError("Curriculum batch metadata requires infos in postprocessed batches.")
-
-        stage_ids = []
-        stage_indices = []
-        n_interceptors = []
-        n_targets = []
-        for info in infos:
-            if not isinstance(info, Mapping):
-                raise ValueError("Curriculum batch info entries must be mappings.")
-            missing = {
-                CURRICULUM_STAGE_ID,
-                CURRICULUM_STAGE_INDEX,
-                CURRICULUM_N_INTERCEPTORS,
-                CURRICULUM_N_TARGETS,
-            } - set(info)
-            if missing:
-                raise ValueError(f"Curriculum batch info missing field(s): {sorted(missing)}")
-            stage_ids.append(info[CURRICULUM_STAGE_ID])
-            stage_indices.append(info[CURRICULUM_STAGE_INDEX])
-            n_interceptors.append(info[CURRICULUM_N_INTERCEPTORS])
-            n_targets.append(info[CURRICULUM_N_TARGETS])
-
-        postprocessed_batch[CURRICULUM_STAGE_ID] = np.asarray(stage_ids, dtype=object)
-        postprocessed_batch[CURRICULUM_STAGE_INDEX] = np.asarray(stage_indices, dtype=np.int32)
-        postprocessed_batch[CURRICULUM_N_INTERCEPTORS] = np.asarray(n_interceptors, dtype=np.int32)
-        postprocessed_batch[CURRICULUM_N_TARGETS] = np.asarray(n_targets, dtype=np.int32)
 
     def on_train_result(
         self,
@@ -188,9 +163,27 @@ class CurriculumCallbacks(OrbitalPhysicsCallbacks):
             self._consecutive_success_count = 0
             self._metric_history.clear()
             task = self._current_task()
-            self._broadcast_task(algorithm, task)
+            self._apply_stage_to_algorithm(algorithm, task)
 
         self._log_curriculum_metrics(task, result, metrics_logger)
+
+    def on_env_runners_recreated(
+        self,
+        *,
+        algorithm: Any,
+        env_runner_group: Any,
+        env_runner_indices: List[int],
+        is_evaluation: bool,
+        **kwargs,
+    ) -> None:
+        self._ensure_initialized(algorithm)
+        task = self._current_task()
+        self._apply_stage_to_env_runners(
+            env_runner_group,
+            task,
+            remote_worker_ids=env_runner_indices,
+            local_env_runner=False,
+        )
 
     def _ensure_initialized(self, algorithm: Any) -> None:
         if self._initialized:
@@ -206,7 +199,7 @@ class CurriculumCallbacks(OrbitalPhysicsCallbacks):
         if curriculum_data is None:
             raise ValueError("CurriculumCallbacks requires curriculum metadata in RLlib env_config.")
         self.curriculum_config = CurriculumConfig.from_mapping(curriculum_data)
-        self.current_stage_index = 0
+        self.current_stage_index = get_active_curriculum_stage_index(env_config)
         self.iterations_in_stage = 0
         self.stage_transition_count = 0
         self._consecutive_success_count = 0
@@ -250,21 +243,46 @@ class CurriculumCallbacks(OrbitalPhysicsCallbacks):
             self._consecutive_success_count = 0
         return self._consecutive_success_count >= advance_when.consecutive_iterations
 
-    def _broadcast_task(self, algorithm: Any, task: CurriculumTask) -> None:
-        env_runner_group = getattr(algorithm, "env_runner_group", None)
-        if env_runner_group is None or not hasattr(env_runner_group, "foreach_env"):
-            raise RuntimeError("Installed RLlib does not expose algorithm.env_runner_group.foreach_env().")
+    def _apply_stage_to_algorithm(self, algorithm: Any, task: CurriculumTask) -> None:
+        self._sync_trainability(algorithm, task)
+        self._apply_stage_to_env_runners(
+            getattr(algorithm, "env_runner_group", None),
+            task,
+        )
 
-        task_dict = task.to_dict()
+    def _sync_trainability(self, algorithm: Any, task: CurriculumTask) -> None:
+        trainable_policies = trainable_policies_for_stage(self.curriculum_config, task.stage_index)
+        learner_group = getattr(algorithm, "learner_group", None)
+        if learner_group is None or not hasattr(learner_group, "foreach_learner"):
+            return
+        learner_group.foreach_learner(
+            func=partial(
+                configure_learner_for_curriculum_stage,
+                trainable_policies=trainable_policies,
+            ),
+            timeout_seconds=0.0,
+        )
 
-        def assign_task(env):
-            orbital_env = _unwrap_orbital_env(env)
-            if orbital_env is None:
-                raise RuntimeError("Could not find OrbitalEnv.set_task() on RLlib rollout environment.")
-            orbital_env.set_task(task_dict)
-            return orbital_env.get_task().stage_id
+    def _apply_stage_to_env_runners(
+        self,
+        env_runner_group: Any,
+        task: CurriculumTask,
+        *,
+        remote_worker_ids: Optional[List[int]] = None,
+        local_env_runner: bool = True,
+    ) -> None:
+        if env_runner_group is None or not hasattr(env_runner_group, "foreach_env_runner"):
+            raise RuntimeError("Installed RLlib does not expose algorithm.env_runner_group.foreach_env_runner().")
 
-        env_runner_group.foreach_env(assign_task)
+        env_runner_group.foreach_env_runner(
+            func=partial(
+                configure_env_runner_for_curriculum_stage,
+                env_config_patch=build_curriculum_stage_env_config_patch(task.stage_index),
+                trainable_policies=trainable_policies_for_stage(self.curriculum_config, task.stage_index),
+            ),
+            remote_worker_ids=remote_worker_ids,
+            local_env_runner=local_env_runner,
+        )
 
     def _log_curriculum_metrics(
         self,
@@ -299,18 +317,4 @@ def _lookup_metric(result: Mapping[str, Any], metric_name: str) -> Optional[floa
         mean_name = f"{metric_name}_mean"
         if mean_name in candidate:
             return float(candidate[mean_name])
-    return None
-
-
-def _unwrap_orbital_env(env: Any):
-    if hasattr(env, "set_task") and hasattr(env, "get_task"):
-        return env
-    if hasattr(env, "par_env"):
-        par_env = env.par_env
-        if hasattr(par_env, "set_task") and hasattr(par_env, "get_task"):
-            return par_env
-    if hasattr(env, "unwrapped"):
-        unwrapped = env.unwrapped
-        if hasattr(unwrapped, "set_task") and hasattr(unwrapped, "get_task"):
-            return unwrapped
     return None

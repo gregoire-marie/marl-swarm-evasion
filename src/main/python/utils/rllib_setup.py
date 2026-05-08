@@ -2,7 +2,7 @@ import argparse
 import json
 import os
 from dataclasses import asdict, dataclass, fields, replace
-from typing import Any, Dict, Iterable, Mapping, Optional, Tuple
+from typing import Any, Dict, Mapping, Optional, Tuple
 
 import numpy as np
 from ray.rllib.core.columns import Columns
@@ -27,6 +27,7 @@ CURRICULUM_STAGE_ID = "curriculum_stage_id"
 CURRICULUM_STAGE_INDEX = "curriculum_stage_index"
 CURRICULUM_N_INTERCEPTORS = "n_interceptors"
 CURRICULUM_N_TARGETS = "n_targets"
+ACTIVE_CURRICULUM_STAGE_INDEX = "active_curriculum_stage_index"
 
 
 @dataclass(frozen=True)
@@ -177,6 +178,7 @@ def build_orbital_env_config(
     spec: OrbitalRunSpec,
     *,
     curriculum_config: Optional[CurriculumConfig] = None,
+    active_curriculum_stage_index: int = 0,
 ) -> Dict[str, Any]:
     env_config = {
         "timestep_sec": spec.timestep,
@@ -190,6 +192,7 @@ def build_orbital_env_config(
         env_config["N_max"] = curriculum_config.N_max
         env_config["M_max"] = curriculum_config.M_max
         env_config["curriculum"] = curriculum_config.to_dict()
+        env_config[ACTIVE_CURRICULUM_STAGE_INDEX] = int(active_curriculum_stage_index)
     return env_config
 
 
@@ -197,26 +200,57 @@ def build_rllib_env_config(
     spec: OrbitalRunSpec,
     *,
     curriculum_config: Optional[CurriculumConfig] = None,
+    active_curriculum_stage_index: int = 0,
 ) -> Dict[str, Any]:
     config = {
         "n_interceptors": spec.n_interceptors,
         "n_targets": spec.n_targets,
         "seed": spec.seed,
-        "orbital_env_config": build_orbital_env_config(spec, curriculum_config=curriculum_config),
+        "orbital_env_config": build_orbital_env_config(
+            spec,
+            curriculum_config=curriculum_config,
+            active_curriculum_stage_index=active_curriculum_stage_index,
+        ),
     }
     if curriculum_config is not None:
         config["curriculum"] = curriculum_config.to_dict()
+        config[ACTIVE_CURRICULUM_STAGE_INDEX] = int(active_curriculum_stage_index)
     return config
+
+
+def build_curriculum_stage_env_config_patch(stage_index: int) -> Dict[str, Any]:
+    stage_index = int(stage_index)
+    return {
+        ACTIVE_CURRICULUM_STAGE_INDEX: stage_index,
+        "orbital_env_config": {
+            ACTIVE_CURRICULUM_STAGE_INDEX: stage_index,
+        },
+    }
+
+
+def get_active_curriculum_stage_index(env_config: Optional[Mapping[str, Any]], *, default: int = 0) -> int:
+    config = dict(env_config or {})
+    orbital_env_config = dict(config.get("orbital_env_config", {}))
+    stage_index = config.get(
+        ACTIVE_CURRICULUM_STAGE_INDEX,
+        orbital_env_config.get(ACTIVE_CURRICULUM_STAGE_INDEX, default),
+    )
+    return int(stage_index)
 
 
 def create_raw_env(
     spec: OrbitalRunSpec,
     *,
     curriculum_config: Optional[CurriculumConfig] = None,
+    active_curriculum_stage_index: int = 0,
 ) -> OrbitalEnv:
     return OrbitalEnv(
         agent_configs=build_agent_configs(spec),
-        env_config=build_orbital_env_config(spec, curriculum_config=curriculum_config),
+        env_config=build_orbital_env_config(
+            spec,
+            curriculum_config=curriculum_config,
+            active_curriculum_stage_index=active_curriculum_stage_index,
+        ),
     )
 
 
@@ -228,8 +262,13 @@ def create_rllib_env(config: Dict[str, Any]) -> ParallelPettingZooEnv:
     spec = run_spec_from_rllib_env_config(config)
     curriculum_data = config.get("curriculum") or dict(config.get("orbital_env_config", {})).get("curriculum")
     curriculum_config = CurriculumConfig.from_mapping(curriculum_data) if curriculum_data else None
+    active_curriculum_stage_index = get_active_curriculum_stage_index(config)
     raw_env = (
-        create_raw_env(spec, curriculum_config=curriculum_config)
+        create_raw_env(
+            spec,
+            curriculum_config=curriculum_config,
+            active_curriculum_stage_index=active_curriculum_stage_index,
+        )
         if curriculum_config is not None
         else create_raw_env(spec)
     )
@@ -293,62 +332,12 @@ def build_policies_to_train(policy_ids, *, freeze_targets: bool) -> list:
     return policies_to_train or list(policy_ids)
 
 
-def extract_curriculum_stage_indices_from_batch(batch: Any) -> set:
-    if batch is None:
-        raise ValueError("Curriculum policies_to_train requires a sample batch.")
-
-    if isinstance(batch, Mapping) and CURRICULUM_STAGE_INDEX in batch:
-        return _unique_int_values(batch[CURRICULUM_STAGE_INDEX])
-
-    infos = None
-    if isinstance(batch, Mapping):
-        infos = batch.get("infos")
-    if infos is None and hasattr(batch, "get"):
-        infos = batch.get("infos")
-    if infos is not None:
-        stage_indices = []
-        for info in infos:
-            if isinstance(info, Mapping) and CURRICULUM_STAGE_INDEX in info:
-                stage_indices.append(info[CURRICULUM_STAGE_INDEX])
-        if stage_indices:
-            return _unique_int_values(stage_indices)
-
-    raise ValueError(
-        "Curriculum sample batch is missing curriculum_stage_index metadata; "
-        "cannot determine stage-dependent policy trainability."
-    )
-
-
-def build_curriculum_policies_to_train(curriculum_config: CurriculumConfig):
-    stage_trainable = {
-        stage.stage_index: set(stage.trainable_policies)
-        for stage in curriculum_config.stages
-    }
-
-    def policies_to_train(policy_id: str, batch: Any) -> bool:
-        stage_indices = extract_curriculum_stage_indices_from_batch(batch)
-        unknown = stage_indices - set(stage_trainable)
-        if unknown:
-            raise ValueError(f"Batch contains unknown curriculum stage index value(s): {sorted(unknown)}")
-        return all(policy_id in stage_trainable[stage_index] for stage_index in stage_indices)
-
-    return policies_to_train
+def trainable_policies_for_stage(curriculum_config: CurriculumConfig, stage_index: int) -> list:
+    return list(curriculum_config.task_by_index(int(stage_index)).trainable_policies)
 
 
 def rllib_policy_mapping_fn(agent_id: str, *unused_args: Any, **unused_kwargs: Any) -> str:
     return policy_mapping_fn(agent_id)
-
-
-def _unique_int_values(values: Iterable[Any]) -> set:
-    if np.isscalar(values):
-        array = np.asarray([values])
-    elif isinstance(values, np.ndarray):
-        array = values
-    else:
-        array = np.asarray(list(values))
-    if array.size == 0:
-        raise ValueError("Curriculum sample batch has no curriculum_stage_index values.")
-    return {int(value) for value in np.unique(array.astype(np.int64))}
 
 
 def _batch_single_item(item: Any) -> Any:

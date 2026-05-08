@@ -4,6 +4,7 @@ from src.main.python.environment.orbital_env import OrbitalEnv
 from src.main.python.experiment.curriculum import CurriculumConfig
 from src.main.python.agents.orbit_state import OrbitState
 from src.main.python.orbital_meca.orbits import compute_eci_distance
+from src.main.python.utils.rllib_setup import ACTIVE_CURRICULUM_STAGE_INDEX
 
 
 def make_dummy_config(n_agents=2, maneuver_frame="ECI"):
@@ -39,7 +40,7 @@ def make_dummy_config(n_agents=2, maneuver_frame="ECI"):
     return agent_configs, env_config
 
 
-def make_curriculum_env():
+def make_curriculum_env(active_stage_index=0):
     agent_configs, base_env_config = make_dummy_config(n_agents=4)
     remapped_configs = {}
     interceptor_index = 0
@@ -96,6 +97,7 @@ def make_curriculum_env():
         M_max=curriculum.M_max,
         max_delta_v_mps=20.0,
         curriculum=curriculum.to_dict(),
+        active_curriculum_stage_index=active_stage_index,
     )
     return OrbitalEnv(remapped_configs, base_env_config), curriculum
 
@@ -216,6 +218,16 @@ def test_curriculum_set_task_preserves_fixed_spaces_and_updates_controllable_age
     action = np.array([100.0, 0.0, 0.0], dtype=np.float32)
     env.step({"interceptor_0": action, "target_0": action})
     assert np.isclose(env._agent_states["target_0"].get_used_delta_v().to_value(u.m / u.s), 20.0, atol=1e-6)
+
+
+def test_curriculum_env_can_start_from_active_stage_config():
+    env, _ = make_curriculum_env(active_stage_index=1)
+    obs, infos = env.reset()
+
+    assert env.env_config[ACTIVE_CURRICULUM_STAGE_INDEX] == 1
+    assert env.get_task().stage_id == "S2"
+    assert set(obs) == {"interceptor_0", "interceptor_1", "target_0"}
+    assert infos["target_0"]["curriculum_stage_index"] == 1
 
 
 def test_single_agent_behavior():

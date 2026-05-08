@@ -4,14 +4,14 @@ import pytest
 
 import src.main.python.utils.rllib_setup as rllib_setup
 from src.main.python.utils.rllib_setup import (
-    CURRICULUM_STAGE_INDEX,
+    ACTIVE_CURRICULUM_STAGE_INDEX,
     OrbitalRunSpec,
     DEFAULT_MAX_DELTA_V_MPS,
     RUN_PARAMETERS_FILENAME,
     _batch_single_item,
     _get_module_device,
     _unbatch_single_item,
-    build_curriculum_policies_to_train,
+    build_curriculum_stage_env_config_patch,
     build_orbital_env_config,
     build_policies_to_train,
     build_policy_setup,
@@ -31,6 +31,7 @@ from src.main.python.utils.rllib_setup import (
     run_spec_from_rllib_env_config,
     run_spec_from_run_parameters,
     save_run_parameters,
+    trainable_policies_for_stage,
     validate_run_spec,
 )
 from src.main.python.experiment.curriculum import CurriculumConfig
@@ -164,6 +165,42 @@ def test_build_env_configs_include_expected_fields():
     }
 
 
+def test_curriculum_env_configs_include_active_stage_index():
+    curriculum = CurriculumConfig.from_mapping(
+        {
+            "N_max": 1,
+            "M_max": 1,
+            "stages": [
+                {
+                    "stage_id": "S1",
+                    "n_interceptors": 1,
+                    "n_targets": 1,
+                    "disabled_actions": ["targets"],
+                    "frozen_policies": [],
+                    "trainable_policies": ["interceptor_policy"],
+                    "maneuver_frame": "ECI",
+                    "propagator": "keplerian",
+                    "initial_condition_distribution": "pursuit_evasion",
+                    "max_delta_v_mps": 10.0,
+                    "episode_length": 5,
+                },
+            ],
+        }
+    )
+    spec = OrbitalRunSpec()
+
+    orbital_config = build_orbital_env_config(spec, curriculum_config=curriculum)
+    rllib_config = build_rllib_env_config(spec, curriculum_config=curriculum)
+
+    assert orbital_config[ACTIVE_CURRICULUM_STAGE_INDEX] == 0
+    assert rllib_config[ACTIVE_CURRICULUM_STAGE_INDEX] == 0
+    assert rllib_config["orbital_env_config"][ACTIVE_CURRICULUM_STAGE_INDEX] == 0
+    assert build_curriculum_stage_env_config_patch(2) == {
+        ACTIVE_CURRICULUM_STAGE_INDEX: 2,
+        "orbital_env_config": {ACTIVE_CURRICULUM_STAGE_INDEX: 2},
+    }
+
+
 def test_run_parameters_roundtrip_and_observation_slot_counts(tmp_path):
     spec = OrbitalRunSpec(
         n_interceptors=2,
@@ -268,7 +305,12 @@ def test_create_raw_env_and_create_rllib_env_use_expected_factories(monkeypatch)
     assert raw_env.env_config == build_orbital_env_config(spec)
 
     monkeypatch.setattr(rllib_setup, "run_spec_from_rllib_env_config", lambda config: spec)
-    monkeypatch.setattr(rllib_setup, "create_raw_env", lambda input_spec: fake_raw_env)
+
+    def fake_create_raw_env(input_spec, *, curriculum_config=None, active_curriculum_stage_index=0):
+        wrapped["active_stage_index"] = active_curriculum_stage_index
+        return fake_raw_env
+
+    monkeypatch.setattr(rllib_setup, "create_raw_env", fake_create_raw_env)
 
     class FakeParallelPettingZooEnv:
         def __init__(self, env):
@@ -280,6 +322,7 @@ def test_create_raw_env_and_create_rllib_env_use_expected_factories(monkeypatch)
     wrapped_env = create_rllib_env({"seed": 5})
 
     assert wrapped["env"] is fake_raw_env
+    assert wrapped["active_stage_index"] == 0
     assert wrapped_env.env is fake_raw_env
 
 
@@ -363,7 +406,7 @@ def test_build_policies_to_train_and_policy_mapping():
     assert rllib_policy_mapping_fn("target_0") == "target_policy"
 
 
-def test_curriculum_policies_to_train_uses_batch_stage_metadata():
+def test_trainable_policies_for_stage_uses_curriculum_stage():
     curriculum = CurriculumConfig.from_mapping(
         {
             "N_max": 1,
@@ -404,15 +447,11 @@ def test_curriculum_policies_to_train_uses_batch_stage_metadata():
         }
     )
 
-    policies_to_train = build_curriculum_policies_to_train(curriculum)
+    assert trainable_policies_for_stage(curriculum, 0) == ["interceptor_policy"]
+    assert trainable_policies_for_stage(curriculum, 1) == ["target_policy"]
 
-    assert policies_to_train("interceptor_policy", {CURRICULUM_STAGE_INDEX: np.array([0, 0])})
-    assert not policies_to_train("target_policy", {CURRICULUM_STAGE_INDEX: np.array([0, 0])})
-    assert policies_to_train("target_policy", {CURRICULUM_STAGE_INDEX: np.array([1])})
-    assert not policies_to_train("interceptor_policy", {CURRICULUM_STAGE_INDEX: np.array([0, 1])})
-
-    with pytest.raises(ValueError, match="missing curriculum_stage_index"):
-        policies_to_train("interceptor_policy", {})
+    with pytest.raises(ValueError, match="Unknown curriculum stage index"):
+        trainable_policies_for_stage(curriculum, 2)
 
 
 def test_batch_and_unbatch_helpers_handle_nested_structures():
