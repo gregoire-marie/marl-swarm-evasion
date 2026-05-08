@@ -108,8 +108,8 @@ cmake-build-*/
 # IntelliJ
 out/
 .junie
+AGENTS.md
 
 # idea folder
 .idea
 results
-simu_port

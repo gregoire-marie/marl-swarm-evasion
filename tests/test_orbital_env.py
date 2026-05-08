@@ -1,6 +1,7 @@
 import numpy as np
 from astropy import units as u
 from src.main.python.environment.orbital_env import OrbitalEnv
+from src.main.python.experiment.curriculum import CurriculumConfig
 from src.main.python.agents.orbit_state import OrbitState
 from src.main.python.orbital_meca.orbits import compute_eci_distance
 
@@ -36,6 +37,67 @@ def make_dummy_config(n_agents=2, maneuver_frame="ECI"):
     }
 
     return agent_configs, env_config
+
+
+def make_curriculum_env():
+    agent_configs, base_env_config = make_dummy_config(n_agents=4)
+    remapped_configs = {}
+    interceptor_index = 0
+    target_index = 0
+    for config in agent_configs.values():
+        if config["role"] == "interceptor":
+            remapped_configs[f"interceptor_{interceptor_index}"] = config
+            interceptor_index += 1
+        else:
+            remapped_configs[f"target_{target_index}"] = config
+            target_index += 1
+
+    curriculum = CurriculumConfig.from_mapping(
+        {
+            "N_max": 2,
+            "M_max": 2,
+            "stages": [
+                {
+                    "stage_id": "S1",
+                    "n_interceptors": 1,
+                    "n_targets": 2,
+                    "disabled_actions": ["targets"],
+                    "frozen_policies": [],
+                    "trainable_policies": ["interceptor_policy"],
+                    "maneuver_frame": "ECI",
+                    "propagator": "keplerian",
+                    "initial_condition_distribution": "pursuit_evasion",
+                    "max_delta_v_mps": 5.0,
+                    "episode_length": 5,
+                    "advance_when": {
+                        "min_iterations": 1,
+                        "consecutive_iterations": 1,
+                        "conditions": [{"metric": "intercept_success_rate", "operator": ">", "threshold": 0.8}],
+                    },
+                },
+                {
+                    "stage_id": "S2",
+                    "n_interceptors": 2,
+                    "n_targets": 1,
+                    "disabled_actions": [],
+                    "frozen_policies": ["interceptor_policy"],
+                    "trainable_policies": ["target_policy"],
+                    "maneuver_frame": "TNW",
+                    "propagator": "keplerian",
+                    "initial_condition_distribution": "pursuit_evasion",
+                    "max_delta_v_mps": 20.0,
+                    "episode_length": 7,
+                },
+            ],
+        }
+    )
+    base_env_config.update(
+        N_max=curriculum.N_max,
+        M_max=curriculum.M_max,
+        max_delta_v_mps=20.0,
+        curriculum=curriculum.to_dict(),
+    )
+    return OrbitalEnv(remapped_configs, base_env_config), curriculum
 
 
 def test_orbital_env_reset_and_step():
@@ -109,6 +171,51 @@ def test_orbital_env_reset_and_step():
     # Episode should not be done after 1 step
     assert not any(terms.values()), "Episode ended too early (termination)"
     assert not any(truncs.values()), "Episode ended too early (truncation)"
+
+
+def test_curriculum_disabled_targets_are_physical_but_not_controllable():
+    env, _ = make_curriculum_env()
+
+    obs, infos = env.reset()
+
+    assert env.possible_agents == ["interceptor_0", "interceptor_1", "target_0", "target_1"]
+    assert set(obs) == {"interceptor_0"}
+    assert set(env._agent_states) == {"interceptor_0", "target_0", "target_1"}
+    assert infos["interceptor_0"]["curriculum_stage_id"] == "S1"
+    assert infos["interceptor_0"]["n_interceptors"] == 1
+    assert infos["interceptor_0"]["n_targets"] == 2
+
+    target_pre_dv = env._agent_states["target_0"].get_used_delta_v().to_value(u.m / u.s)
+    obs, rewards, terms, truncs, infos = env.step(
+        {
+            "interceptor_0": np.zeros(3, dtype=np.float32),
+            "target_0": np.array([20.0, 0.0, 0.0], dtype=np.float32),
+        }
+    )
+
+    assert set(obs) == {"interceptor_0"}
+    assert set(rewards) == {"interceptor_0"}
+    assert np.isclose(env._agent_states["target_0"].get_used_delta_v().to_value(u.m / u.s), target_pre_dv)
+
+
+def test_curriculum_set_task_preserves_fixed_spaces_and_updates_controllable_agents():
+    env, curriculum = make_curriculum_env()
+    initial_obs_space = env.observation_space("interceptor_0")
+    initial_action_space = env.action_space("interceptor_0")
+
+    env.set_task(curriculum.stages[1])
+    obs, infos = env.reset()
+
+    assert env.get_task().stage_id == "S2"
+    assert env.observation_space("target_0") == initial_obs_space
+    assert env.action_space("target_0") == initial_action_space
+    assert set(obs) == {"interceptor_0", "interceptor_1", "target_0"}
+    assert set(env._agent_states) == {"interceptor_0", "interceptor_1", "target_0"}
+    assert infos["target_0"]["curriculum_stage_index"] == 1
+
+    action = np.array([100.0, 0.0, 0.0], dtype=np.float32)
+    env.step({"interceptor_0": action, "target_0": action})
+    assert np.isclose(env._agent_states["target_0"].get_used_delta_v().to_value(u.m / u.s), 20.0, atol=1e-6)
 
 
 def test_single_agent_behavior():
@@ -200,6 +307,11 @@ def test_telemetry_helpers():
     assert isinstance(position, np.ndarray)
     assert position.shape == (3,)
     assert np.all(np.isfinite(position))
+
+    elements = env.get_orbital_elements(aid0)
+    assert set(elements) == {"a_m", "e", "i_deg", "raan_deg", "argp_deg", "M_deg"}
+    assert all(isinstance(value, float) for value in elements.values())
+    assert all(np.isfinite(value) for value in elements.values())
 
     initial_remaining_dv = env.get_remaining_delta_v_mps(aid0)
     assert np.isclose(initial_remaining_dv, 10000.0, atol=1e-6)

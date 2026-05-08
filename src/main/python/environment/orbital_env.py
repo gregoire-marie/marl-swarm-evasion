@@ -3,13 +3,19 @@ from gymnasium.spaces import Box
 import numpy as np
 from astropy.time import Time, TimeDelta
 from astropy import units as u
+from typing import Any, Dict, Mapping
 
 from src.main.python.agents.satellite_agent import SatelliteAgent
 from src.main.python.environment.reward_engine import compute_rewards
+from src.main.python.experiment.curriculum import CurriculumConfig, CurriculumTask
 from src.main.python.orbital_meca.orbits import compute_eci_distance
+from src.main.python.utils.constants import DEFAULT_START_TIME
+from src.main.python.utils.helpers import keplerian_to_array
+from src.main.python.utils.normalization import A_REF, A_SCALE, DIST_SCALE, normalize_angle
 from src.main.python.utils.random import set_global_seed
 
 SUPPORTED_MANEUVER_FRAMES = {"ECI", "TNW"}
+CURRICULUM_OBS_FEATURES_PER_SLOT = 11
 
 
 class OrbitalEnv(ParallelEnv):
@@ -70,14 +76,23 @@ class OrbitalEnv(ParallelEnv):
                 - "max_delta_v_mps" (float): Max delta-v allowed per action (in m/s).
                 - "maneuver_frame" (str): Maneuver frame for actions, "ECI" or "TNW".
         """
-        self.agents = list(agent_configs.keys())
-        self.possible_agents = self.agents.copy()
-        self.agent_configs = agent_configs
+        self.agent_configs = dict(agent_configs)
         self.env_config = env_config
+        self._interceptor_ids = self._sorted_role_agent_ids("interceptor")
+        self._target_ids = self._sorted_role_agent_ids("target")
+        self.N_max = int(env_config.get("N_max", len(self._interceptor_ids)))
+        self.M_max = int(env_config.get("M_max", len(self._target_ids)))
+        if self.N_max > len(self._interceptor_ids):
+            raise ValueError(f"N_max={self.N_max} exceeds configured interceptor slots.")
+        if self.M_max > len(self._target_ids):
+            raise ValueError(f"M_max={self.M_max} exceeds configured target slots.")
+        self.possible_agents = self._interceptor_ids[: self.N_max] + self._target_ids[: self.M_max]
+        self.agents = self.possible_agents.copy()
 
         self.timestep = TimeDelta(env_config.get("timestep_sec", 10), format="sec")
         self.episode_length = env_config.get("episode_length", 1000)
         self.max_delta_v = env_config.get("max_delta_v_mps", 100.0)  # m/s
+        self._action_space_max_delta_v = float(self.max_delta_v)
         self.maneuver_frame = str(env_config.get("maneuver_frame", "ECI")).strip().upper()
         if self.maneuver_frame not in SUPPORTED_MANEUVER_FRAMES:
             raise ValueError(
@@ -90,6 +105,111 @@ class OrbitalEnv(ParallelEnv):
         self._step_count = 0
         self._agent_states = {}  # agent_id -> SatelliteAgent
         self._seed = None
+        self._curriculum_config = self._load_curriculum_config(env_config)
+        self._task = (
+            self._curriculum_config.stages[0]
+            if self._curriculum_config is not None
+            else self._default_task()
+        )
+        self._active_physical_agent_ids = []
+        self._controllable_agent_ids = []
+        self.set_task(self._task)
+
+    def _load_curriculum_config(self, env_config: Mapping[str, Any]):
+        curriculum_data = env_config.get("curriculum")
+        if curriculum_data is None:
+            return None
+        return CurriculumConfig.from_mapping(curriculum_data)
+
+    def _default_task(self) -> CurriculumTask:
+        frozen_policies = []
+        trainable_policies = ["interceptor_policy"] if self.N_max > 0 else []
+        if self.M_max > 0:
+            if self.freeze_targets:
+                frozen_policies.append("target_policy")
+            else:
+                trainable_policies.append("target_policy")
+        return CurriculumTask(
+            stage_id="standard",
+            n_interceptors=self.N_max,
+            n_targets=self.M_max,
+            disabled_actions=(),
+            frozen_policies=tuple(frozen_policies),
+            trainable_policies=tuple(trainable_policies),
+            maneuver_frame=self.maneuver_frame,
+            propagator="keplerian",
+            initial_condition_distribution="pursuit_evasion",
+            max_delta_v_mps=float(self.max_delta_v),
+            episode_length=int(self.episode_length),
+            stage_index=0,
+        )
+
+    def _sorted_role_agent_ids(self, role: str):
+        agent_ids = [
+            agent_id
+            for agent_id, config in self.agent_configs.items()
+            if config.get("role") == role
+        ]
+        return sorted(agent_ids, key=self._agent_sort_key)
+
+    @staticmethod
+    def _agent_sort_key(agent_id: str):
+        prefix, _, suffix = agent_id.rpartition("_")
+        if suffix.isdigit():
+            return prefix, int(suffix)
+        return agent_id, 0
+
+    def set_task(self, task: CurriculumTask) -> None:
+        """
+        Assign the active curriculum task.
+
+        Curriculum progression is owned by callbacks. The environment only updates
+        its runtime parameters and executes the task it is given.
+        """
+        if isinstance(task, Mapping):
+            task = CurriculumTask.from_mapping(
+                task,
+                stage_index=int(task.get("stage_index", 0)),
+                n_max=self.N_max,
+                m_max=self.M_max,
+                require_advance_when=False,
+            )
+        if not isinstance(task, CurriculumTask):
+            raise TypeError("set_task() expects a CurriculumTask or task mapping.")
+        task.validate(n_max=self.N_max, m_max=self.M_max)
+        self._task = task
+        self.episode_length = task.episode_length
+        self.max_delta_v = task.max_delta_v_mps
+        self.maneuver_frame = task.maneuver_frame
+        self._active_physical_agent_ids = (
+            self._interceptor_ids[: task.n_interceptors]
+            + self._target_ids[: task.n_targets]
+        )
+        disabled = set(task.disabled_actions)
+        self._controllable_agent_ids = [
+            agent_id
+            for agent_id in self._active_physical_agent_ids
+            if self._team_name_for_agent(agent_id) not in disabled
+        ]
+        if self._agent_states:
+            self._reset_agent_states()
+
+    def get_task(self) -> CurriculumTask:
+        return self._task
+
+    def _team_name_for_agent(self, agent_id: str) -> str:
+        role = self.agent_configs[agent_id]["role"]
+        if role == "interceptor":
+            return "interceptors"
+        if role == "target":
+            return "targets"
+        raise ValueError(f"Unknown agent role for {agent_id}: {role}")
+
+    def _reset_agent_states(self) -> None:
+        self._agent_states = {
+            agent_id: SatelliteAgent(agent_id, self.agent_configs[agent_id], self._current_time)
+            for agent_id in self._active_physical_agent_ids
+        }
 
     def _sanitize_observation(self, obs: np.ndarray) -> np.ndarray:
         """
@@ -117,20 +237,16 @@ class OrbitalEnv(ParallelEnv):
             set_global_seed(self._seed)
 
         self._step_count = 0
-        self._current_time = Time(self.env_config.get("start_time", "2025-01-01 00:00:00"), scale="utc")
+        self._current_time = Time(self.env_config.get("start_time", DEFAULT_START_TIME), scale="utc")
 
-        # Reset agent states
-        self._agent_states = {
-            agent_id: SatelliteAgent(agent_id, config, self._current_time)
-            for agent_id, config in self.agent_configs.items()
-        }
+        self._reset_agent_states()
 
         observations = {}
-        for agent_id, agent in self._agent_states.items():
-            raw_obs = agent.get_observation(self._agent_states)
+        for agent_id in self._controllable_agent_ids:
+            raw_obs = self._build_observation(agent_id)
             observations[agent_id] = self._sanitize_observation(raw_obs)
 
-        infos = {agent_id: {} for agent_id in self.agents}
+        infos = {agent_id: self._stage_info() for agent_id in self._controllable_agent_ids}
 
         return observations, infos
 
@@ -153,9 +269,12 @@ class OrbitalEnv(ParallelEnv):
         self._current_time += self.timestep
 
         # Apply actions
-        for agent_id in self.agents:
+        disabled = set(self._task.disabled_actions)
+        for agent_id in self._active_physical_agent_ids:
             agent = self._agent_states[agent_id]
-            if self.freeze_targets and agent.role == "target":
+            if self._team_name_for_agent(agent_id) in disabled:
+                dv = np.zeros(3, dtype=np.float32)
+            elif self._curriculum_config is None and self.freeze_targets and agent.role == "target":
                 dv = np.zeros(3, dtype=np.float32)
             else:
                 dv_vector = actions.get(agent_id, None)
@@ -176,24 +295,24 @@ class OrbitalEnv(ParallelEnv):
             agent.propagate_to(self._current_time)
 
         # Compute rewards and global flags
-        rewards_raw, flags = compute_rewards(self._agent_states, self._current_time)
+        rewards_raw, flags = compute_rewards(self._agent_states)
         # Ensure plain Python floats in rewards dict
-        rewards = {aid: float(rewards_raw.get(aid, 0.0)) for aid in self.agents}
+        rewards = {aid: float(rewards_raw.get(aid, 0.0)) for aid in self._controllable_agent_ids}
 
         # Observations after state update
         observations = {}
-        for agent_id, agent in self._agent_states.items():
-            raw_obs = agent.get_observation(self._agent_states)
+        for agent_id in self._controllable_agent_ids:
+            raw_obs = self._build_observation(agent_id)
             observations[agent_id] = self._sanitize_observation(raw_obs)
 
         # Episode termination and truncation
         # Terminate on any critical flag (collision, intercept, no fuel)
         any_flag = any(flags.values())
-        terminations = {agent_id: any_flag for agent_id in self.agents}
+        terminations = {agent_id: any_flag for agent_id in self._controllable_agent_ids}
         
         # Truncate on episode length
         truncated = self._step_count >= self.episode_length
-        truncations = {agent_id: truncated for agent_id in self.agents}
+        truncations = {agent_id: truncated for agent_id in self._controllable_agent_ids}
 
         # Infos: expose flags and basic diagnostics per agent
         infos = {
@@ -201,8 +320,9 @@ class OrbitalEnv(ParallelEnv):
                 "flags": flags.copy(),
                 "time": self._current_time.isot,
                 "step": self._step_count,
+                **self._stage_info(),
             }
-            for agent_id in self.agents
+            for agent_id in self._controllable_agent_ids
         }
 
         return observations, rewards, terminations, truncations, infos
@@ -220,12 +340,11 @@ class OrbitalEnv(ParallelEnv):
 
         Total dim: 7 + (N-1) × 7 = 7N
         """
-        num_agents = len(self.agents)
-        obs_dim = 7 * num_agents
+        obs_dim = CURRICULUM_OBS_FEATURES_PER_SLOT * (self.N_max + self.M_max)
 
         return Box(
-            low=np.full((obs_dim,), -10.0, dtype=np.float32),
-            high=np.full((obs_dim,), 10.0, dtype=np.float32),
+            low=np.full((obs_dim,), -1_000_000.0, dtype=np.float32),
+            high=np.full((obs_dim,), 1_000_000.0, dtype=np.float32),
             shape=(obs_dim,),
             dtype=np.float32,
         )
@@ -244,13 +363,59 @@ class OrbitalEnv(ParallelEnv):
             gymnasium.spaces.Box: Bounded 3D continuous action space [m/s].
         """
         # 3D delta-v vector in selected maneuver frame, bounded by max delta-v
-        max_dv = np.float32(self.max_delta_v)
+        max_dv = np.float32(self._action_space_max_delta_v)
         return Box(
             low=np.full((3,), -max_dv, dtype=np.float32),
             high=np.full((3,), max_dv, dtype=np.float32),
             shape=(3,),
             dtype=np.float32,
         )
+
+    def _build_observation(self, observer_id: str) -> np.ndarray:
+        observer = self._agent_states[observer_id]
+        obs = []
+        for slot_id in self.possible_agents:
+            slot_agent = self._agent_states.get(slot_id)
+            is_active = slot_agent is not None
+            role = self.agent_configs[slot_id]["role"]
+            team_mask = 1.0 if role == "interceptor" else -1.0
+            self_mask = 1.0 if slot_id == observer_id else 0.0
+            if is_active:
+                kep_raw = keplerian_to_array(slot_agent.orbit_state.orbit)
+                kep = np.asarray(
+                    [
+                        (kep_raw[0] - A_REF) / A_SCALE,
+                        kep_raw[1],
+                        normalize_angle(kep_raw[2]),
+                        normalize_angle(kep_raw[3]),
+                        normalize_angle(kep_raw[4]),
+                        normalize_angle(kep_raw[5]),
+                    ],
+                    dtype=np.float32,
+                )
+                remaining_dv = max(
+                    0.0,
+                    slot_agent.init_delta_v.to_value(u.m / u.s)
+                    - slot_agent.used_delta_v.to_value(u.m / u.s),
+                )
+                fuel_scale = slot_agent.init_delta_v.to_value(u.m / u.s)
+                fuel_norm = remaining_dv / fuel_scale if fuel_scale > 0 else 0.0
+                distance = 0.0 if slot_id == observer_id else compute_eci_distance(
+                    observer.orbit_state,
+                    slot_agent.orbit_state,
+                )
+                obs.extend([1.0, team_mask, self_mask, *kep.tolist(), fuel_norm, distance / DIST_SCALE])
+            else:
+                obs.extend([0.0, team_mask, self_mask, *([0.0] * 6), 0.0, 0.0])
+        return np.asarray(obs, dtype=np.float32)
+
+    def _stage_info(self) -> Dict[str, Any]:
+        return {
+            "curriculum_stage_id": self._task.stage_id,
+            "curriculum_stage_index": int(self._task.stage_index),
+            "n_interceptors": int(self._task.n_interceptors),
+            "n_targets": int(self._task.n_targets),
+        }
 
     def get_position_m(self, agent_id: str) -> np.ndarray:
         """
@@ -265,12 +430,26 @@ class OrbitalEnv(ParallelEnv):
         """
         return float(self._agent_states[agent_id].get_remaining_delta_v().to_value(u.m / u.s))
 
+    def get_orbital_elements(self, agent_id: str) -> dict:
+        """
+        Return the current Keplerian elements of one agent as plain floats.
+        """
+        a, e, inc, raan, argp, mean_anomaly = self._agent_states[agent_id].orbit_state.get_keplerian()
+        return {
+            "a_m": float(a.to_value(u.m)),
+            "e": float(e.to_value(u.one) if hasattr(e, "to") else e),
+            "i_deg": float(inc.to_value(u.deg)),
+            "raan_deg": float(raan.to_value(u.deg)),
+            "argp_deg": float(argp.to_value(u.deg)),
+            "M_deg": float(mean_anomaly.to_value(u.deg)),
+        }
+
     def get_pairwise_distances_m(self) -> dict:
         """
         Return pairwise distances between all current agents in meters.
         """
         distances = {}
-        agent_ids = list(self.agents)
+        agent_ids = list(self._active_physical_agent_ids)
         for i, aid in enumerate(agent_ids):
             for bid in agent_ids[i + 1 :]:
                 distances[f"{aid}__{bid}"] = float(

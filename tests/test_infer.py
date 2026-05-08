@@ -2,7 +2,9 @@ import gymnasium as gym
 import numpy as np
 import torch
 
+from argparse import Namespace
 from ray.rllib.core.columns import Columns
+from app.infer import _unwrap_angle_deg, plot_inference
 from src.main.python.utils.rllib_setup import compute_deterministic_module_action
 
 
@@ -82,3 +84,49 @@ def test_compute_module_action_preserves_state_outputs():
     np.testing.assert_allclose(action, np.array([0.01, 0.02, 0.03], dtype=np.float32))
     assert isinstance(next_state, dict)
     np.testing.assert_allclose(next_state["h"], np.array([1.0, 2.0], dtype=np.float32))
+
+
+def test_unwrap_angle_deg_removes_wrap_discontinuity():
+    unwrapped = _unwrap_angle_deg([350.0, 355.0, 1.0, 5.0])
+
+    np.testing.assert_allclose(unwrapped, np.array([350.0, 355.0, 361.0, 365.0]))
+
+
+def test_plot_inference_writes_orbital_elements_png(tmp_path):
+    agent_ids = ["interceptor_0", "target_0"]
+    times_min = [0.0, 1.0, 2.0]
+    step_times_min = [1.0, 2.0]
+    orbital_elements = {
+        aid: {
+            "a_m": [7_000_000.0, 7_000_010.0, 7_000_020.0],
+            "e": [0.001, 0.0011, 0.0012],
+            "i_deg": [51.0, 51.1, 51.2],
+            "raan_deg": [350.0, 355.0, 1.0],
+            "argp_deg": [10.0, 11.0, 12.0],
+            "M_deg": [20.0, 21.0, 22.0],
+        }
+        for aid in agent_ids
+    }
+    inference_data = {
+        "spec": Namespace(max_delta_v_mps=20.0),
+        "agent_ids": agent_ids,
+        "times_min": times_min,
+        "step_times_min": step_times_min,
+        "trajectories_m": {
+            aid: [
+                np.array([7_000_000.0, 0.0, 0.0]),
+                np.array([7_000_000.0, 1_000.0, 0.0]),
+                np.array([7_000_000.0, 2_000.0, 0.0]),
+            ]
+            for aid in agent_ids
+        },
+        "rewards": {aid: [1.0, 2.0] for aid in agent_ids},
+        "fuel_mps": {aid: [100.0, 99.0, 98.0] for aid in agent_ids},
+        "action_magnitudes_mps": {aid: [0.5, 0.7] for aid in agent_ids},
+        "orbital_elements": orbital_elements,
+        "distances_m": {"interceptor_0__target_0": [10_000.0, 9_000.0, 8_000.0]},
+    }
+
+    plot_inference(str(tmp_path), inference_data)
+
+    assert (tmp_path / "orbital_elements.png").is_file()

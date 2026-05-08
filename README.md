@@ -8,10 +8,14 @@
 This is a project about swarm interceptor satellites evasion using multi-agent reinforcement learning.
 
 ## Overview
-A mixed target and interceptor satellite swarms cooperative-competitive environment, enabling multi-agent policy optimization with deep reinforcement learning using algorithms such as [MADDPG](https://arxiv.org/pdf/1706.02275) or [PPO](https://arxiv.org/abs/1707.06347). 
+A mixed target and interceptor satellite swarms cooperative-competitive environment, enabling multi-agent policy optimization with deep reinforcement learning. The current training entry point uses [PPO](https://arxiv.org/abs/1707.06347) through Ray RLlib.
+
+[MADDPG](https://arxiv.org/pdf/1706.02275) is a relevant future algorithm for this setting, but it is not implemented yet.
 
 Target satellites learn to evade a swarm of interceptor satellites dynamically learning seek-and-destroy strategies.
 Maneuvers are supported in both the inertial `ECI` frame and the local `TNW` frame.
+
+See [docs/architecture.md](docs/architecture.md) for diagrams of the training/inference architecture and environment step lifecycle.
 
 ## Quick Start
 ### Requirements
@@ -34,11 +38,18 @@ Maneuvers are supported in both the inertial `ECI` frame and the local `TNW` fra
    # Train with custom parameters
    uv run python app/train.py --name ppo_3i_1t_tnw --n-interceptors 3 --n-targets 1 --iterations 100 --num-workers 4 --maneuver-frame TNW
    ```
+   Training writes `run_parameters.json` alongside the run/checkpoint metadata so inference can recreate the scenario configuration later.
    
-3. **Run inference**:
+3. **Run curriculum training (single RLlib/Tune run)**:
    ```bash
-   # Inference with custom parameters
-   uv run python app/infer.py checkpoint --n-interceptors 3 --n-targets 1 --episode-length 250 --num-workers 4 --maneuver-frame TNW
+   uv run python app/curriculum_train.py --curriculum-config path/to/curriculum.json --iterations 100
+   ```
+   Curriculum training uses fixed `interceptor_policy` and `target_policy` policies and advances stages from RLlib callbacks.
+
+4. **Run inference**:
+   ```bash
+   # Inference reuses checkpoint metadata by default; CLI values override it
+   uv run python app/infer.py checkpoint --episode-length 250 --maneuver-frame TNW
    ```
 
 ## Testing
@@ -62,6 +73,10 @@ This project standardizes physical units, angles, and time across the codebase f
   - 3D delta-v maneuver vectors in the `ECI` or `TNW` frame (m/s).
   - In `TNW` mode, actions are converted to ECI at burn epoch before propagation.
   - Magnitudes are clipped by `env_config["max_delta_v_mps"]`.
+
+- Rewards and termination
+  - Reentry is triggered when altitude falls below `DEFAULT_OBJECTIVES["reentry_altitude_m"]`.
+  - The reentering agent receives `DEFAULT_REWARD_WEIGHTS["reentry_penalty"] == -100.0`.
 
 - Observations
   - Flat float vectors containing Keplerian elements and derived scalars (e.g., remaining Δv, pairwise distances).
@@ -117,6 +132,7 @@ uv run python app/train.py [OPTIONS]
 | `--n-targets` | int | 1                                          | Number of target agents.                                                                                                                                                 |
 | `--timestep` | float | 60.0                                       | Simulation timestep in seconds.                                                                                                                                          |
 | `--episode-length` | int | 100                                        | Maximum number of steps per episode (any collision causes an early termination).                                                                                         |
+| `--start-time` | str | `2025-01-01 00:00:00`                      | UTC simulation start time.                                                                                                                                               |
 | `--max-delta-v-mps` | float | 20.0                                       | Maximum single-maneuver delta-v in m/s.                                                                                                                                  |
 | `--maneuver-frame` | str | `eci`                                      | Maneuver frame used for actions: `eci` or `tnw`.                                                                                                                         |
 | `--freeze-targets` | flag | -                                          | Force targets to apply zero Δv at each step.                                                                                                                             |
@@ -135,6 +151,134 @@ uv run python app/train.py [OPTIONS]
 | `--name` | str | -                                          | Name of the experiment (used as the results subdirectory).                                                                                                              |
 | `--local-dir` | str | `~/results/marl-swarm-evasion/ray_results` | Directory for results and checkpoints.                                                                                                                                   |
 
+## Curriculum Training
+
+`app/curriculum_train.py` runs one continuous RLlib PPO/Tune experiment and lets `CurriculumCallbacks.on_train_result()` advance stages. It requires a JSON curriculum file; stage thresholds are intentionally config-owned rather than hidden in code defaults.
+
+```bash
+uv run python app/curriculum_train.py \
+  --curriculum-config configs/curriculum_1v1_to_nvm.json \
+  --iterations 200 \
+  --batch-size 4000 \
+  --num-workers 4 \
+  --checkpoint-freq 10
+```
+
+Curriculum runs always use two fixed policies:
+
+- `interceptor_policy`
+- `target_policy`
+
+Agent IDs are mapped by prefix: `interceptor_*` uses `interceptor_policy`, and `target_*` uses `target_policy`. The environment keeps fixed maximum capacity for the whole run (`N_max`, `M_max`), and all stages share the same RLlib observation and action spaces.
+
+### Curriculum JSON Example
+
+```json
+{
+  "N_max": 4,
+  "M_max": 3,
+  "timestep": 60.0,
+  "start_time": "2025-01-01 00:00:00",
+  "seed": 42,
+  "stages": [
+    {
+      "stage_id": "S1",
+      "n_interceptors": 1,
+      "n_targets": 1,
+      "disabled_actions": ["targets"],
+      "frozen_policies": [],
+      "trainable_policies": ["interceptor_policy"],
+      "maneuver_frame": "ECI",
+      "propagator": "keplerian",
+      "initial_condition_distribution": "pursuit_evasion",
+      "max_delta_v_mps": 20.0,
+      "episode_length": 100,
+      "advance_when": {
+        "min_iterations": 5,
+        "consecutive_iterations": 3,
+        "conditions": [
+          {
+            "metric": "intercept_success_rate",
+            "operator": ">",
+            "threshold": 0.8
+          }
+        ]
+      }
+    },
+    {
+      "stage_id": "S2",
+      "n_interceptors": 1,
+      "n_targets": 1,
+      "disabled_actions": [],
+      "frozen_policies": ["interceptor_policy"],
+      "trainable_policies": ["target_policy"],
+      "maneuver_frame": "ECI",
+      "propagator": "keplerian",
+      "initial_condition_distribution": "pursuit_evasion",
+      "max_delta_v_mps": 20.0,
+      "episode_length": 100,
+      "advance_when": {
+        "min_iterations": 5,
+        "consecutive_iterations": 3,
+        "conditions": [
+          {
+            "metric": "target_survival_rate",
+            "operator": ">",
+            "threshold": 0.8
+          }
+        ]
+      }
+    },
+    {
+      "stage_id": "S3",
+      "n_interceptors": 1,
+      "n_targets": 1,
+      "disabled_actions": [],
+      "frozen_policies": [],
+      "trainable_policies": ["interceptor_policy", "target_policy"],
+      "maneuver_frame": "ECI",
+      "propagator": "keplerian",
+      "initial_condition_distribution": "pursuit_evasion",
+      "max_delta_v_mps": 20.0,
+      "episode_length": 100,
+      "advance_when": {
+        "min_iterations": 10,
+        "consecutive_iterations": 2,
+        "conditions": [
+          {
+            "metric": "collision_rate",
+            "operator": "<",
+            "threshold": 0.1
+          }
+        ],
+        "plateau": {
+          "metric": "episode_return_mean",
+          "window": 5,
+          "min_delta": 0.01
+        }
+      }
+    },
+    {
+      "stage_id": "S4",
+      "n_interceptors": 4,
+      "n_targets": 3,
+      "disabled_actions": [],
+      "frozen_policies": [],
+      "trainable_policies": ["interceptor_policy", "target_policy"],
+      "maneuver_frame": "TNW",
+      "propagator": "keplerian",
+      "initial_condition_distribution": "pursuit_evasion",
+      "max_delta_v_mps": 20.0,
+      "episode_length": 150
+    }
+  ]
+}
+```
+
+Non-final stages must define `advance_when`. The final stage must not define `advance_when`; it continues until the normal `--iterations` stopping criterion. Supported `operator` values are `>`, `>=`, `<`, `<=`, and `==`.
+
+Disabled teams remain physically present but are omitted from RLlib observations, so no actions are computed for them. Frozen-policy teams are still controllable and act through their mapped policy, but `policies_to_train` skips optimizer updates for batches collected under that stage.
+
 ## Monitoring
 
 You can monitor the training progress in real-time using **TensorBoard**. This allows you to track not only the rewards but also domain-specific success metrics.
@@ -152,7 +296,7 @@ tensorboard --logdir ~/results/marl-swarm-evasion/ray_results
 Use this page to track the most important metrics:
 
 *   **Success and Failures**: `intercept_success_rate` and `out_of_fuel_rate`.
-*   **Collisions**: `interceptors_collision_rate` and `targets_collision_rate`.
+*   **Collisions**: `interceptors_collision_rate`, `targets_collision_rate`, and `collision_rate`.
 *   **Episode Metrics**: Average steps per episode `episode_steps` (custom) and episode length `episode_len_mean` (default).
 *   **Training Performance**: Mean episode return.
 
@@ -166,13 +310,25 @@ In the TensorBoard dashboard, you will find several categories of metrics:
 
 2.  **Custom Orbital Metrics** (found under `ray/tune/env_runners/`):
     *   `intercept_success_rate`: Percentage of episodes where an interceptor successfully reached a target.
+    *   `target_survival_rate`: Percentage of episodes where targets avoided interception.
     *   `interceptors_collision_rate`: Rate of collisions between interceptors.
     *   `targets_collision_rate`: Rate of collisions between targets.
+    *   `collision_rate`: Unified same-role collision rate.
     *   `out_of_fuel_rate`: Percentage of episodes ending because agents ran out of Δv budget.
     *   `reentry_rate`: Percentage of episodes ending because agents reentered the atmosphere.
     *   `episode_steps`: Average number of steps per episode (shorter episodes often indicate early collisions or successes).
 
 These metrics provide a direct view of whether your agents are actually learning the desired orbital behaviors or just maximizing rewards through unintended shortcuts.
+
+### Curriculum Learning
+
+Curriculum training uses `app/curriculum_train.py` and requires a JSON curriculum config. The run keeps exactly two fixed RLlib policies, `interceptor_policy` and `target_policy`, and advances stages through `CurriculumCallbacks.on_train_result()` inside one continuous PPO/Tune run.
+
+Each curriculum stage defines active interceptor/target counts, disabled-action teams, frozen/trainable policies, maneuver frame, propagator, initial-condition distribution, max Δv, episode length, and explicit `advance_when` transition criteria. Non-final stages must include `advance_when`; the final stage continues until the normal Tune stopping criteria.
+
+The environment exposes fixed padded/masked observations at the configured maximum capacity (`N_max`, `M_max`). Disabled teams remain physical objects in the simulation but are omitted from the returned observation dict, so RLlib does not request actions or produce policy batches for them.
+
+Curriculum metrics include `curriculum/stage_id`, `curriculum/stage_index`, `curriculum/n_interceptors`, `curriculum/n_targets`, `curriculum/iterations_in_stage`, and `curriculum/stage_transition_count`.
 
 ## Inference and Visualization
 
@@ -183,22 +339,28 @@ After training your agents, you can run an inference session to visualize the or
 Use the `app/infer.py` script to load a checkpoint and run a single episode:
 
 ```bash
-uv run python app/infer.py checkpoint --n-interceptors 1 --n-targets 1 --episode-length 100 --maneuver-frame tnw
+uv run python app/infer.py checkpoint --episode-length 100 --maneuver-frame tnw
 ```
+
+Inference first looks for `run_parameters.json` in the checkpoint directory or its parents, then falls back to the RLlib checkpoint environment config. Explicit CLI values always override checkpoint metadata.
+
+`run_parameters.json` records the scenario metadata needed to reconstruct an inference run: `n_interceptors`, `n_targets`, `timestep`, `episode_length`, `start_time`, `max_delta_v_mps`, `maneuver_frame`, `freeze_targets`, `seed`, and observation slot counts.
 
 ### Command-line Arguments (Inference)
 
-| Argument | Type | Default                 | Description                                           |
-| :--- | :--- |:------------------------|:------------------------------------------------------|
-| `checkpoint` | str | -                       | **Required**. Path to the RLlib checkpoint directory. |
-| `--n-interceptors` | int | 1                       | Number of interceptor agents.                         |
-| `--n-targets` | int | 1                       | Number of target agents.                              |
-| `--timestep` | float | 60.0                    | Simulation timestep in seconds.                       |
-| `--episode-length` | int | 100                     | Number of steps per episode.                          |
-| `--max-delta-v-mps` | float | 20.0                    | Maximum single-maneuver delta-v in m/s.              |
-| `--maneuver-frame` | str | `eci`                   | Maneuver frame used for actions: `eci` or `tnw`.      |
-| `--seed` | int | 42                      | Random seed for the scenario.                         |
-| `--out-dir` | str | `$checkpoint/inference` | Directory to save generated plots.                    |
+| Argument | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `checkpoint` | str | - | **Required**. Path to a run directory with `checkpoint_*` folders, or directly to a specific checkpoint directory. |
+| `--n-interceptors` | int | checkpoint config | Override the number of interceptor agents. |
+| `--n-targets` | int | checkpoint config | Override the number of target agents. |
+| `--timestep` | float | checkpoint config | Override the simulation timestep in seconds. |
+| `--episode-length` | int | checkpoint config | Override the number of steps per episode. |
+| `--start-time` | str | checkpoint config | Override the UTC simulation start time. |
+| `--max-delta-v-mps` | float | checkpoint config | Override the maximum single-maneuver delta-v in m/s. |
+| `--freeze-targets` / `--no-freeze-targets` | bool | checkpoint config | Override whether target agents are forced to apply zero Δv. |
+| `--maneuver-frame` | str | checkpoint config | Override the maneuver frame used for actions: `eci` or `tnw`. |
+| `--seed` | int | checkpoint config | Override the random seed for the scenario. |
+| `--out-dir` | str | `$checkpoint/inference` | Directory to save generated plots. |
 
 ### Generated Plots
 
@@ -207,6 +369,7 @@ The script produces several plots in the output directory:
 1.  **`trajectories_3d.png`**: A 3D view of the orbital trajectories for all agents, with Earth for reference.
 2.  **`metrics_over_time.png`**: Time-series of rewards, remaining fuel (Δv), and action magnitudes for each agent.
 3.  **`distances.png`**: Relative distances between all pairs of agents over time (log scale), with the collision threshold highlighted.
+4.  **`orbital_elements.png`**: Time-series of semi-major axis, eccentricity, inclination, RAAN, argument of perigee, and mean anomaly for each agent. Angular values are unwrapped for cleaner trend lines.
 
 ## Learn to parametrize
 
@@ -235,10 +398,13 @@ The script produces several plots in the output directory:
 - **Orbital Environment Builder**: Creates an environment containing target and interceptor satellites. *Based on [`Poliastro`](https://docs.poliastro.space/en/stable/) and [`Astropy`](https://www.astropy.org/)*. Manages:
   - Orbital propagation,
   - Orbital maneuvers,
-  - Proximity approach computation,
-  - Collision probability estimation.
-- **Policy Learning**: Teach interceptors to track targets and targets to evade collisions using fuel-efficient maneuvers. Supports algorithms such as **MADDPG** and **PPO** via RLlib.
-- **Parametric Scenarios**: Easily configure orbital regions (LEO/MEO/GEO), swarm size, maneuvering capacity, and mission objectives.
+  - Pairwise distance checks,
+  - Closest-approach utilities.
+- **Not implemented yet**: Collision probability estimation is not wired into the environment.
+- **Policy Learning**: Teach interceptors to track targets and targets to evade collisions using fuel-efficient maneuvers. The implemented training path uses **PPO** via RLlib.
+- **Not implemented yet**: MADDPG support is not currently available.
+- **Parametric Scenarios**: Configure LEO pursuit-evasion scenarios with swarm size, maneuvering capacity, and mission objectives.
+- **Not implemented yet**: MEO/GEO scenario builders are not currently available.
 - **Modular Reward Engine**: Pluggable reward shaping functions (reciprocal distance, logarithmic, quadratic) for different mission goals.
 - **Visualization Tools**: Utilities to visualize reward landscapes and simulation results.
 
@@ -248,10 +414,12 @@ marl-swarm-evasion/
 │
 ├── app/                            # Entry points and scripts
 │   ├── train.py                    # RLlib training script (PPO)
-│   ├── infer.py                # Inference and visualization script
+│   ├── infer.py                    # Inference and visualization script
 │   └── visualize_rewards.py        # Reward shaping visualization tool
 │
 ├── docs/                           # Documentation and diagrams
+│   ├── architecture.md             # Runtime architecture and step lifecycle
+│   └── class_diagram.md            # Earlier class/workflow sketch
 │
 ├── src/
 │   └── main/
@@ -270,10 +438,12 @@ marl-swarm-evasion/
 │           │   └── orbits.py          # ECI distance & orbital utilities
 │           │
 │           └── utils/              # Shared utilities
+│               ├── callbacks.py       # RLlib metrics callbacks
 │               ├── constants.py       # Physical & environment constants
 │               ├── helpers.py         # Logging & unit conversions
 │               ├── normalization.py   # Observation scaling
 │               ├── random.py          # Seeding & reproducibility
+│               ├── rllib_setup.py     # RLlib config, policies, env factories
 │               └── units.py           # Unit guardrails
 │
 ├── tests/                          # Test suite
@@ -291,4 +461,4 @@ Unauthorized copying, distribution, modification, or sale of this software,
 via any medium, is strictly prohibited without prior written permission.
 
 ## Keywords
-MARL, Multi-Agent Reinforcement Learning, MADDPG, ASAT, Anti-Satellite
+MARL, Multi-Agent Reinforcement Learning, PPO, MADDPG-planned, ASAT, Anti-Satellite

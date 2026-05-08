@@ -5,7 +5,7 @@ from astropy.time import Time
 
 from src.main.python.agents.satellite_agent import SatelliteAgent
 from src.main.python.environment.reward_engine import compute_rewards
-from src.main.python.utils.constants import DEFAULT_REWARD_WEIGHTS
+from src.main.python.utils.constants import DEFAULT_OBJECTIVES, DEFAULT_REWARD_WEIGHTS
 
 # === Fixtures ===
 
@@ -43,7 +43,7 @@ def test_interception_success(default_epoch, default_orbit_near):
     t1 = default_agent("t1", "target", default_orbit_near, default_epoch)
 
     agents = {"i1": i1, "t1": t1}
-    rewards, flags = compute_rewards(agents, default_epoch)
+    rewards, flags = compute_rewards(agents)
 
     assert flags["intercept_success"]
     assert not flags["interceptors_coll"]
@@ -61,7 +61,7 @@ def test_interception_shaping(default_epoch, default_orbit_near, default_orbit_f
     t1 = default_agent("t1", "target", default_orbit_far, default_epoch)
 
     agents = {"i1": i1, "t1": t1}
-    rewards, flags = compute_rewards(agents, default_epoch)
+    rewards, flags = compute_rewards(agents)
 
     assert not flags["intercept_success"]
     assert rewards["i1"] > 0.0
@@ -90,7 +90,7 @@ def test_same_role_dispersion_and_collision(default_epoch, default_orbit_near, d
     t2 = default_agent("t2", "target", t2_orbit, default_epoch)
 
     agents = {"i1": i1, "i2": i2, "t1": t1, "t2": t2}
-    rewards, flags = compute_rewards(agents, default_epoch)
+    rewards, flags = compute_rewards(agents)
 
     assert not flags["intercept_success"]
     assert not flags["interceptors_coll"]
@@ -104,7 +104,7 @@ def test_interceptor_collision(default_epoch, default_orbit_near):
     i2 = default_agent("i2", "interceptor", i2_orbit, default_epoch)
 
     agents = {"i1": i1, "i2": i2}
-    rewards, flags = compute_rewards(agents, default_epoch)
+    rewards, flags = compute_rewards(agents)
 
     assert flags["interceptors_coll"]
 
@@ -113,11 +113,28 @@ def test_fuel_penalty_and_no_fuel(default_epoch, default_orbit_near):
     agent = default_agent("s1", "target", default_orbit_near, default_epoch)
     agent.used_delta_v = 1500.0 * u.m / u.s
 
-    rewards, flags = compute_rewards({"s1": agent}, default_epoch)
+    rewards, flags = compute_rewards({"s1": agent})
 
     assert flags["no_fuel"]
     expected = DEFAULT_REWARD_WEIGHTS["fuel_penalty"] * 1500.0
     assert np.isclose(rewards["s1"], expected, rtol=1e-2)
+
+
+def test_reentry_penalty(default_epoch):
+    reentry_orbit = (
+        (6_378_137.0 + DEFAULT_OBJECTIVES["reentry_altitude_m"] - 1_000.0) * u.m,
+        0.0 * u.one,
+        51.6 * u.deg,
+        0 * u.deg,
+        0 * u.deg,
+        0 * u.deg,
+    )
+    agent = default_agent("s1", "target", reentry_orbit, default_epoch)
+
+    rewards, flags = compute_rewards({"s1": agent})
+
+    assert flags["reentry"]
+    assert np.isclose(rewards["s1"], DEFAULT_REWARD_WEIGHTS["reentry_penalty"])
 
 
 def test_mixed_constellation_flags_and_rewards(default_epoch, default_orbit_near, default_orbit_far):
@@ -130,7 +147,7 @@ def test_mixed_constellation_flags_and_rewards(default_epoch, default_orbit_near
     t1.used_delta_v = 500.0 * u.m / u.s
 
     agents = {"i1": i1, "i2": i2, "t1": t1}
-    rewards, flags = compute_rewards(agents, default_epoch)
+    rewards, flags = compute_rewards(agents)
 
     assert flags["intercept_success"]
     assert not flags["interceptors_coll"]

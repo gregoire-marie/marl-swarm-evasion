@@ -1,5 +1,8 @@
 from astropy import units as u
 
+# -- Simulation defaults --
+DEFAULT_START_TIME = "2025-01-01 00:00:00"
+
 # -- Agents commands --
 DEFAULT_OBJECTIVES = {
     "collision_distance_m": 2000.0,      # Threshold where a target is considered intercepted (m)
@@ -21,6 +24,7 @@ DEFAULT_REWARD_WEIGHTS = {
 
     # All agents
     "fuel_penalty": -1.0e-3,                # Linear penalty for Δv used (m/s input)
+    "reentry_penalty": -100.0,              # Applied when altitude falls below the reentry threshold
 }
 
 DEFAULT_REWARD_WEIGHTS_V2 = {
