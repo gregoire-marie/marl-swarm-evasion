@@ -5,37 +5,53 @@ DEFAULT_START_TIME = "2025-01-01 00:00:00"
 
 # -- Agents commands --
 DEFAULT_OBJECTIVES = {
-    "collision_distance_m": 2000.0,      # Threshold where a target is considered intercepted (m)
-    "avoid_distance_m": 10000.0,         # Minimal spacing for targets to keep with interceptors (m)
-    "same_role_spacing_m": 10000.0,      # Minimal spacing to keep between agents with the same role (m)
-    "minimal_delta_v_mps": 0.01,         # Minimal delta-v to consider fuel depleted in an agent (m/s)
-    "reentry_altitude_m": 120000.0,      # Altitude at which a satellite is considered reentered in the atmosphere (m)
+    "collision_distance_m": 2000.0,     # Interceptors that bring the distance to a target under this threshold: win (m)
+    "avoid_distance_m": 10000.0,        # Targets that keep the distance to all interceptors above this threshold: win (m)
+    "same_role_spacing_m": 10000.0,     # All agents ought to keep the distance to same-role agents above this threshold (m)
+    "minimal_delta_v_mps": 0.01,        # All agents ought to keep their remaining delta-v above this threshold (m/s)
+    "reentry_altitude_m": 120000.0,     # All agents ought to keep their altitude above this threshold (m)
 }
 
 # -- Rewards --
+
+## These rewards are shared regardless of the reward engine version
 DEFAULT_REWARD_WEIGHTS = {
+    ### All agents
+    ## Reward functions parameters
+    "fuel_penalty": -1.0e-3,        # Slope of the linear penalty proportional to used-Δv (in m/s)
+
+    ## One time rewards
+    "reentry_penalty": -10.0,       # One-time penalty when altitude falls below the reentry threshold
+}
+
+## These rewards function parameters depend on the reward engine version
+DEFAULT_REWARD_WEIGHTS_V1 = {
     # Interceptor objectives
-    "intercept_shaping": 10.0,
-    "interceptor_dispersion": 3.0,
+    "intercept_shaping": 10.0,          # Shapes the reward for distance to target minimization objective
+    "interceptor_dispersion": 3.0,      # Shapes the reward for distance to other interceptors maximization objective
 
     # Target objectives
-    "evasion_shaping": 3.0,
-    "target_dispersion": 3.0,
-
-    # All agents
-    "fuel_penalty": -1.0e-3,                # Linear penalty for Δv used (m/s input)
-    "reentry_penalty": -100.0,              # Applied when altitude falls below the reentry threshold
+    "evasion_shaping": 3.0,             # Shapes the reward for distance to interceptors maximization objective
+    "target_dispersion": 3.0,           # Shapes the reward for distance to other targets maximization objective
 }
 
 DEFAULT_REWARD_WEIGHTS_V2 = {
     # Soft shaping (separation / evasion / dispersion)
     "objective_d_safe": 10000.0,        # default safety distance (m)
-    "objective_d_alpha": 1.0,          # default soft penalty scale
+    "objective_d_alpha": 1.0,           # default soft penalty scale
 
     # Hard shaping (interception)
-    "zero_d_beta": 1.0,           # strength of reciprocal reward
-    "zero_d_eps": 1e-3,           # numerical stability
-    "zero_d_max": None,         # if set, reward=0 beyond this distance (m)
+    "intercept_shaping": 10.0,
+    "interceptor_dispersion": 3.0,
+
+    # Soft shaping (evasion)
+    "evasion_shaping": 3.0,
+    "target_dispersion": 3.0,
+
+    "zero_d_alpha": 0.001,                 # Strength of reciprocal reward
+    "zero_d_beta": 5.0,                 # Strength of reciprocal reward
+    "zero_d_eps": 1e-3,                 # Numerical stability
+    "zero_d_max": None,                 # if set, reward=0 beyond this distance (m)
 }
 
 # -- Physical constants --

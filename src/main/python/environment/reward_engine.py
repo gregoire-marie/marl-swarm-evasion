@@ -1,22 +1,30 @@
 import numpy as np
 from itertools import combinations
 from astropy import units as u
-from typing import Dict, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
 from src.main.python.agents.satellite_agent import SatelliteAgent
 from src.main.python.orbital_meca.orbits import compute_eci_distance, compute_altitude_m
-from src.main.python.utils.constants import DEFAULT_OBJECTIVES, DEFAULT_REWARD_WEIGHTS
-from typing import Callable
+from src.main.python.utils.constants import (
+    DEFAULT_OBJECTIVES,
+    DEFAULT_REWARD_WEIGHTS_V1,
+    DEFAULT_REWARD_WEIGHTS_V2,
+    DEFAULT_REWARD_WEIGHTS
+)
+
+# Set to "v1" for the legacy shaping functions, or "v2" for the current engine.
+ENGINE_VERSION = "v1"
+SUPPORTED_ENGINE_VERSIONS = ("v1", "v2")
 
 
-def objective_d_shaping_generator(objective: float, w: float):
+def objective_d_shaping_generator_v1(objective: float, w: float):
     """Smoothly increase reward as value exceeds obj, saturates at large values."""
     def fn(x):
         r = (objective / w) * (np.log(x + 1e-6) / np.log(objective + 1e-6) - 1)
         return float(np.tanh(r))  # Tanh prevents exploding gradient
     return fn
 
-def zero_d_shaping_generator(w: float):
+def zero_d_shaping_generator_v1(w: float):
     """Aggressively reward smaller values (inverse-square), capped to prevent gradient explosion."""
     def fn(x):
         return min(float(w / (x + 1e-6)), 20.0)
@@ -44,7 +52,7 @@ def objective_d_shaping_generator_v2(d_safe: float, alpha: float) -> Callable[[f
     return fn
 
 
-def zero_d_shaping_generator_v2(beta: float, eps: float = 1e-3, d_max: float = None) -> Callable[[float], float]:
+def zero_d_shaping_generator_v2(alpha: float, beta: float, r_max: float, eps: float = 1e-3, d_max: float = None) -> Callable[[float], float]:
     """Aggressive reciprocal interception reward.
 
     Args:
@@ -58,7 +66,7 @@ def zero_d_shaping_generator_v2(beta: float, eps: float = 1e-3, d_max: float = N
     def fn(distance: float) -> float:
         if d_max is not None and distance >= d_max:
             return 0.0
-        return float(beta / (distance + eps))
+        return min(r_max, float(beta / (alpha * (distance + eps))))
     return fn
 
 
@@ -68,10 +76,80 @@ def linear_reward_generator(w: float):
         return float(w * x)
     return fn
 
+
+def _build_distance_reward_functions(
+    engine_version: str
+) -> Tuple[
+    Callable[[float], float],
+    Callable[[float], float],
+    Callable[[float], float],
+    Callable[[float], float],
+    Callable[[float], float],
+]:
+    """Returns the reward functions as a tuple.
+
+    Returns None if engine version is not supported.
+
+    Returns:
+        (intercept_reward_fn,
+        target_evasion_reward_fn,
+        interceptor_spacing_reward_fn,
+        target_spacing_reward_fn,
+        fuel_penalty_fn)
+
+    """
+    if engine_version == "v1":
+        fn_tuple = (
+            zero_d_shaping_generator_v1(w=DEFAULT_REWARD_WEIGHTS_V1["intercept_shaping"]),
+            objective_d_shaping_generator_v1(
+                objective=DEFAULT_OBJECTIVES["avoid_distance_m"],
+                w=DEFAULT_REWARD_WEIGHTS_V1["evasion_shaping"],
+            ),
+            objective_d_shaping_generator_v1(
+                objective=DEFAULT_OBJECTIVES["same_role_spacing_m"],
+                w=DEFAULT_REWARD_WEIGHTS_V1["interceptor_dispersion"],
+            ),
+            objective_d_shaping_generator_v1(
+                objective=DEFAULT_OBJECTIVES["same_role_spacing_m"],
+                w=DEFAULT_REWARD_WEIGHTS_V1["target_dispersion"],
+            ),
+        )
+
+    elif engine_version == "v2":
+        fn_tuple = (
+            zero_d_shaping_generator_v2(
+                alpha=DEFAULT_REWARD_WEIGHTS_V2["zero_d_alpha"],
+                beta=DEFAULT_REWARD_WEIGHTS_V2["zero_d_beta"],
+                eps=DEFAULT_REWARD_WEIGHTS_V2["zero_d_eps"],
+                r_max=DEFAULT_REWARD_WEIGHTS["intercept_reward"],
+                d_max=DEFAULT_REWARD_WEIGHTS_V2["zero_d_max"],
+            ),
+            objective_d_shaping_generator_v2(
+                d_safe=DEFAULT_OBJECTIVES["avoid_distance_m"],
+                alpha=DEFAULT_REWARD_WEIGHTS_V2["evasion_shaping"] * DEFAULT_REWARD_WEIGHTS_V2["objective_d_alpha"],
+            ),
+            objective_d_shaping_generator_v2(
+                d_safe=DEFAULT_OBJECTIVES["same_role_spacing_m"],
+                alpha=DEFAULT_REWARD_WEIGHTS_V2["interceptor_dispersion"] * DEFAULT_REWARD_WEIGHTS_V2["objective_d_alpha"],
+            ),
+            objective_d_shaping_generator_v2(
+                d_safe=DEFAULT_OBJECTIVES["same_role_spacing_m"],
+                alpha=DEFAULT_REWARD_WEIGHTS_V2["target_dispersion"] * DEFAULT_REWARD_WEIGHTS_V2["objective_d_alpha"],
+            ),
+        )
+    else:
+        raise ValueError(
+            f"Unsupported reward engine version '{engine_version}'. "
+            f"Supported versions: {SUPPORTED_ENGINE_VERSIONS}."
+        )
+
+    fuel_fn = linear_reward_generator(w=DEFAULT_REWARD_WEIGHTS["fuel_penalty"])  # Fuel usage minimization: linear minimization)
+    return fn_tuple + (fuel_fn,)
+
+
 def compute_rewards(
     agent_states: Dict[str, SatelliteAgent],
-    objectives: Optional[Dict[str, float]] = None,
-    weights: Optional[Dict[str, float]] = None
+    engine_version: Optional[str] = None,
 ) -> Tuple[Dict[str, float], Dict[str, bool]]:
     """
     Compute per-agent rewards and simulation status flags based on constellation state.
@@ -80,12 +158,7 @@ def compute_rewards(
 
     Args:
         agent_states (Dict[str, SatelliteAgent]): Map from agent_id to SatelliteAgent.
-        objectives (Optional[Dict[str, float]]): Thresholds expressed as plain floats with explicit units:
-            - collision_distance_m: meters
-            - avoid_distance_m: meters
-            - same_role_spacing_m: meters
-            - minimal_delta_v_mps: m/s
-        weights (Optional[Dict[str, float]]): Weights for each reward component (dimensionless floats).
+        engine_version (Optional[str]): Reward engine version to use. Defaults to ENGINE_VERSION.
 
     Returns:
         Tuple[Dict[str, float], Dict[str, bool]]:
@@ -104,10 +177,8 @@ def compute_rewards(
       for shaping functions.
     - Shaping functions accept and return plain floats; no astropy Quantities should be passed into them.
     """
-    if objectives is None:
-        objectives = DEFAULT_OBJECTIVES
-    if weights is None:
-        weights = DEFAULT_REWARD_WEIGHTS
+    if engine_version is None:
+        engine_version = ENGINE_VERSION
 
     rewards: Dict[str, float] = {agent_id: 0.0 for agent_id in agent_states}
     flags = {
@@ -122,22 +193,13 @@ def compute_rewards(
     targets = {k: a for k, a in agent_states.items() if a.role == "target"}
 
     # === Define reward shaping functions ===
-    intercept_reward_fn = zero_d_shaping_generator(
-        w=weights["intercept_shaping"]
-    )  # Interceptors distance with targets: hard minimization
-
-    target_evasion_reward_fn = objective_d_shaping_generator(objective=objectives["avoid_distance_m"], w=weights[
-        "evasion_shaping"])  # Targets distance with interceptors: soft maximization
-
-    interceptor_spacing_reward_fn = objective_d_shaping_generator(objective=objectives["same_role_spacing_m"], w=weights[
-        "interceptor_dispersion"])  # Interceptor distance with interceptors: soft maximization
-
-    target_spacing_reward_fn = objective_d_shaping_generator(objective=objectives["same_role_spacing_m"], w=weights[
-        "target_dispersion"])  # Targets distance with targets : soft maximization
-
-    fuel_penalty_fn = linear_reward_generator(
-        w=weights["fuel_penalty"]
-    )  # Fuel usage minimization: linear minimization
+    (
+        intercept_reward_fn,
+        target_evasion_reward_fn,
+        interceptor_spacing_reward_fn,
+        target_spacing_reward_fn,
+        fuel_penalty_fn
+    ) = _build_distance_reward_functions(engine_version)
 
     # === Interceptor ↔ Target (evasion & interception) ===
     # Aggressively minimize distance (interceptor), softly maximize distance (target)
@@ -145,7 +207,7 @@ def compute_rewards(
         for tgt_id, target in targets.items():
             dist_m = compute_eci_distance(interceptor.orbit_state, target.orbit_state)
 
-            if dist_m < objectives["collision_distance_m"]:
+            if dist_m < DEFAULT_OBJECTIVES["collision_distance_m"]:
                 flags["intercept_success"] = True
 
             rewards[int_id] += intercept_reward_fn(dist_m)
@@ -157,7 +219,7 @@ def compute_rewards(
         a1, a2 = interceptors[id1], interceptors[id2]
         dist_m = compute_eci_distance(a1.orbit_state, a2.orbit_state)
 
-        if dist_m < objectives["collision_distance_m"]:
+        if dist_m < DEFAULT_OBJECTIVES["collision_distance_m"]:
             flags["interceptors_coll"] = True
 
         reward = interceptor_spacing_reward_fn(dist_m)
@@ -170,7 +232,7 @@ def compute_rewards(
         a1, a2 = targets[id1], targets[id2]
         dist_m = compute_eci_distance(a1.orbit_state, a2.orbit_state)
 
-        if dist_m < objectives["collision_distance_m"]:
+        if dist_m < DEFAULT_OBJECTIVES["collision_distance_m"]:
             flags["targets_coll"] = True
 
         reward = target_spacing_reward_fn(dist_m)
@@ -182,7 +244,7 @@ def compute_rewards(
         dv_used = agent.get_used_delta_v().to_value(u.m / u.s)
         remaining_dv = agent.get_remaining_delta_v().to_value(u.m / u.s)
 
-        if remaining_dv < objectives["minimal_delta_v_mps"]:
+        if remaining_dv < DEFAULT_OBJECTIVES["minimal_delta_v_mps"]:
             flags["no_fuel"] = True
 
         rewards[agent_id] += fuel_penalty_fn(dv_used)
@@ -191,7 +253,7 @@ def compute_rewards(
     for agent_id, agent in agent_states.items():
         curr_alt = compute_altitude_m(agent.orbit_state)
 
-        if curr_alt < objectives["reentry_altitude_m"]:
+        if curr_alt < DEFAULT_OBJECTIVES["reentry_altitude_m"]:
             flags["reentry"] = True
             rewards[agent_id] += weights["reentry_penalty"]
     return rewards, flags
