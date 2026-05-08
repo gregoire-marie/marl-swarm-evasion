@@ -1,7 +1,6 @@
 import numpy as np
 from itertools import combinations
 from astropy import units as u
-from astropy.time import Time
 from typing import Dict, Optional, Tuple
 
 from src.main.python.agents.satellite_agent import SatelliteAgent
@@ -71,7 +70,6 @@ def linear_reward_generator(w: float):
 
 def compute_rewards(
     agent_states: Dict[str, SatelliteAgent],
-    current_time: Time,
     objectives: Optional[Dict[str, float]] = None,
     weights: Optional[Dict[str, float]] = None
 ) -> Tuple[Dict[str, float], Dict[str, bool]]:
@@ -82,7 +80,6 @@ def compute_rewards(
 
     Args:
         agent_states (Dict[str, SatelliteAgent]): Map from agent_id to SatelliteAgent.
-        current_time (Time): Current time of the simulation.
         objectives (Optional[Dict[str, float]]): Thresholds expressed as plain floats with explicit units:
             - collision_distance_m: meters
             - avoid_distance_m: meters

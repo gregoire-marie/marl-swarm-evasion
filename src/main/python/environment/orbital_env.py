@@ -7,6 +7,7 @@ from astropy import units as u
 from src.main.python.agents.satellite_agent import SatelliteAgent
 from src.main.python.environment.reward_engine import compute_rewards
 from src.main.python.orbital_meca.orbits import compute_eci_distance
+from src.main.python.utils.constants import DEFAULT_START_TIME
 from src.main.python.utils.random import set_global_seed
 
 SUPPORTED_MANEUVER_FRAMES = {"ECI", "TNW"}
@@ -117,7 +118,7 @@ class OrbitalEnv(ParallelEnv):
             set_global_seed(self._seed)
 
         self._step_count = 0
-        self._current_time = Time(self.env_config.get("start_time", "2025-01-01 00:00:00"), scale="utc")
+        self._current_time = Time(self.env_config.get("start_time", DEFAULT_START_TIME), scale="utc")
 
         # Reset agent states
         self._agent_states = {
@@ -176,7 +177,7 @@ class OrbitalEnv(ParallelEnv):
             agent.propagate_to(self._current_time)
 
         # Compute rewards and global flags
-        rewards_raw, flags = compute_rewards(self._agent_states, self._current_time)
+        rewards_raw, flags = compute_rewards(self._agent_states)
         # Ensure plain Python floats in rewards dict
         rewards = {aid: float(rewards_raw.get(aid, 0.0)) for aid in self.agents}
 

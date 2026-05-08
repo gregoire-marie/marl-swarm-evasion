@@ -15,10 +15,10 @@ from ray.tune.registry import register_env
 
 from src.main.python.environment.orbital_env import OrbitalEnv
 from src.main.python.environment.scenarios import pursuit_evasion_scenario
+from src.main.python.utils.constants import DEFAULT_START_TIME
 from src.main.python.utils.helpers import policy_mapping_fn
 
 SUPPORTED_MANEUVER_FRAMES = ("ECI", "TNW")
-DEFAULT_START_TIME = "2025-01-01 00:00:00"
 DEFAULT_MAX_DELTA_V_MPS = 20.0
 RUN_PARAMETERS_FILENAME = "run_parameters.json"
 OBSERVATION_FEATURES_PER_AGENT = 7

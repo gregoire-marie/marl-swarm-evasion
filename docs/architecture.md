@@ -68,7 +68,7 @@ sequenceDiagram
         Agent->>Orbit: propagate_to(current_time)
     end
 
-    Env->>Reward: compute_rewards(agent_states, current_time)
+    Env->>Reward: compute_rewards(agent_states)
     Reward-->>Env: rewards and termination flags
 
     loop each active agent

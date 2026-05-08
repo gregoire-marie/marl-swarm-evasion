@@ -1,5 +1,8 @@
 from astropy import units as u
 
+# -- Simulation defaults --
+DEFAULT_START_TIME = "2025-01-01 00:00:00"
+
 # -- Agents commands --
 DEFAULT_OBJECTIVES = {
     "collision_distance_m": 2000.0,      # Threshold where a target is considered intercepted (m)

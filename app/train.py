@@ -9,8 +9,8 @@ from ray.rllib.algorithms.ppo import PPOConfig
 
 from src.main.python.utils.helpers import get_logger
 from src.main.python.utils.callbacks import OrbitalPhysicsCallbacks
+from src.main.python.utils.constants import DEFAULT_START_TIME
 from src.main.python.utils.rllib_setup import (
-    DEFAULT_START_TIME,
     build_policies_to_train,
     build_policy_setup,
     build_rllib_env_config,
