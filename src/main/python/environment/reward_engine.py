@@ -196,4 +196,5 @@ def compute_rewards(
 
         if curr_alt < objectives["reentry_altitude_m"]:
             flags["reentry"] = True
+            rewards[agent_id] += weights["reentry_penalty"]
     return rewards, flags

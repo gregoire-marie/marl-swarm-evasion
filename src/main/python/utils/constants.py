@@ -21,6 +21,7 @@ DEFAULT_REWARD_WEIGHTS = {
 
     # All agents
     "fuel_penalty": -1.0e-3,                # Linear penalty for Δv used (m/s input)
+    "reentry_penalty": -100.0,              # Applied when altitude falls below the reentry threshold
 }
 
 DEFAULT_REWARD_WEIGHTS_V2 = {

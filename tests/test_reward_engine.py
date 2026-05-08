@@ -5,7 +5,7 @@ from astropy.time import Time
 
 from src.main.python.agents.satellite_agent import SatelliteAgent
 from src.main.python.environment.reward_engine import compute_rewards
-from src.main.python.utils.constants import DEFAULT_REWARD_WEIGHTS
+from src.main.python.utils.constants import DEFAULT_OBJECTIVES, DEFAULT_REWARD_WEIGHTS
 
 # === Fixtures ===
 
@@ -118,6 +118,23 @@ def test_fuel_penalty_and_no_fuel(default_epoch, default_orbit_near):
     assert flags["no_fuel"]
     expected = DEFAULT_REWARD_WEIGHTS["fuel_penalty"] * 1500.0
     assert np.isclose(rewards["s1"], expected, rtol=1e-2)
+
+
+def test_reentry_penalty(default_epoch):
+    reentry_orbit = (
+        (6_378_137.0 + DEFAULT_OBJECTIVES["reentry_altitude_m"] - 1_000.0) * u.m,
+        0.0 * u.one,
+        51.6 * u.deg,
+        0 * u.deg,
+        0 * u.deg,
+        0 * u.deg,
+    )
+    agent = default_agent("s1", "target", reentry_orbit, default_epoch)
+
+    rewards, flags = compute_rewards({"s1": agent}, default_epoch)
+
+    assert flags["reentry"]
+    assert np.isclose(rewards["s1"], DEFAULT_REWARD_WEIGHTS["reentry_penalty"])
 
 
 def test_mixed_constellation_flags_and_rewards(default_epoch, default_orbit_near, default_orbit_far):
