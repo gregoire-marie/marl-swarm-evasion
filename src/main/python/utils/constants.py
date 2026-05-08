@@ -22,6 +22,10 @@ DEFAULT_REWARD_WEIGHTS = {
 
     ## One time rewards
     "reentry_penalty": -10.0,       # One-time penalty when altitude falls below the reentry threshold
+    "no_fuel_penalty": -10.0,       # One-time penalty when fuel falls below the minimal delta-v threshold
+    "intercept_reward": 10.0,       # One-time reward when an interceptor intercepts a target
+    "intercept_penalty": -10.0,     # One-time penalty when a target is intercepted
+    "collision_penalty": -10.0,     # One time penalty when same-role agents collide
 }
 
 ## These rewards function parameters depend on the reward engine version

@@ -209,6 +209,8 @@ def compute_rewards(
 
             if dist_m < DEFAULT_OBJECTIVES["collision_distance_m"]:
                 flags["intercept_success"] = True
+                rewards[int_id] += DEFAULT_REWARD_WEIGHTS["intercept_reward"]
+                rewards[tgt_id] += DEFAULT_REWARD_WEIGHTS["intercept_penalty"]
 
             rewards[int_id] += intercept_reward_fn(dist_m)
             rewards[tgt_id] += target_evasion_reward_fn(dist_m)
@@ -221,6 +223,8 @@ def compute_rewards(
 
         if dist_m < DEFAULT_OBJECTIVES["collision_distance_m"]:
             flags["interceptors_coll"] = True
+            rewards[id1] += DEFAULT_REWARD_WEIGHTS["collision_penalty"]
+            rewards[id2] += DEFAULT_REWARD_WEIGHTS["collision_penalty"]
 
         reward = interceptor_spacing_reward_fn(dist_m)
         rewards[id1] += reward
@@ -234,6 +238,8 @@ def compute_rewards(
 
         if dist_m < DEFAULT_OBJECTIVES["collision_distance_m"]:
             flags["targets_coll"] = True
+            rewards[id1] += DEFAULT_REWARD_WEIGHTS["collision_penalty"]
+            rewards[id2] += DEFAULT_REWARD_WEIGHTS["collision_penalty"]
 
         reward = target_spacing_reward_fn(dist_m)
         rewards[id1] += reward
@@ -246,6 +252,7 @@ def compute_rewards(
 
         if remaining_dv < DEFAULT_OBJECTIVES["minimal_delta_v_mps"]:
             flags["no_fuel"] = True
+            rewards[agent_id] += DEFAULT_REWARD_WEIGHTS["no_fuel_penalty"]
 
         rewards[agent_id] += fuel_penalty_fn(dv_used)
 
@@ -255,5 +262,6 @@ def compute_rewards(
 
         if curr_alt < DEFAULT_OBJECTIVES["reentry_altitude_m"]:
             flags["reentry"] = True
-            rewards[agent_id] += weights["reentry_penalty"]
+            rewards[agent_id] += DEFAULT_REWARD_WEIGHTS["reentry_penalty"]
+
     return rewards, flags
