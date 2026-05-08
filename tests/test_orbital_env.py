@@ -201,6 +201,11 @@ def test_telemetry_helpers():
     assert position.shape == (3,)
     assert np.all(np.isfinite(position))
 
+    elements = env.get_orbital_elements(aid0)
+    assert set(elements) == {"a_m", "e", "i_deg", "raan_deg", "argp_deg", "M_deg"}
+    assert all(isinstance(value, float) for value in elements.values())
+    assert all(np.isfinite(value) for value in elements.values())
+
     initial_remaining_dv = env.get_remaining_delta_v_mps(aid0)
     assert np.isclose(initial_remaining_dv, 10000.0, atol=1e-6)
 

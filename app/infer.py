@@ -22,6 +22,20 @@ from astropy import units as u
 
 logger = get_logger("inference_app")
 
+ORBITAL_ELEMENT_LABELS = {
+    "a_m": "Semi-major axis (m)",
+    "e": "Eccentricity",
+    "i_deg": "Inclination (deg)",
+    "raan_deg": "RAAN (deg)",
+    "argp_deg": "Argument of perigee (deg)",
+    "M_deg": "Mean anomaly (deg)",
+}
+
+
+def _unwrap_angle_deg(values: List[float]) -> np.ndarray:
+    return np.rad2deg(np.unwrap(np.deg2rad(np.asarray(values, dtype=float))))
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Inference app for orbital MARL.")
     parser.add_argument(
@@ -107,6 +121,10 @@ def launch_inference(inference_ctx: Dict[str, Any]) -> Dict[str, Any]:
     rewards_hist: Dict[str, List[float]] = {aid: [] for aid in agent_ids}
     fuel_hist: Dict[str, List[float]] = {aid: [env.get_remaining_delta_v_mps(aid)] for aid in agent_ids}
     action_mag_hist: Dict[str, List[float]] = {aid: [] for aid in agent_ids}
+    orbital_elements_hist: Dict[str, Dict[str, List[float]]] = {
+        aid: {element: [value] for element, value in env.get_orbital_elements(aid).items()}
+        for aid in agent_ids
+    }
     distances_hist: Dict[str, List[float]] = {pair_key: [] for pair_key in initial_distances}
     for pair_key, distance in initial_distances.items():
         distances_hist[pair_key].append(distance)
@@ -154,6 +172,8 @@ def launch_inference(inference_ctx: Dict[str, Any]) -> Dict[str, Any]:
             rewards_hist[aid].append(float(rewards.get(aid, 0.0)))
             trajectories_m[aid].append(env.get_position_m(aid))
             fuel_hist[aid].append(env.get_remaining_delta_v_mps(aid))
+            for element, value in env.get_orbital_elements(aid).items():
+                orbital_elements_hist[aid][element].append(value)
 
         for pair_key, distance in env.get_pairwise_distances_m().items():
             distances_hist[pair_key].append(distance)
@@ -188,6 +208,7 @@ def launch_inference(inference_ctx: Dict[str, Any]) -> Dict[str, Any]:
         "rewards": rewards_hist,
         "fuel_mps": fuel_hist,
         "action_magnitudes_mps": action_mag_hist,
+        "orbital_elements": orbital_elements_hist,
         "distances_m": distances_hist,
         "report": report,
     }
@@ -204,6 +225,7 @@ def plot_inference(plot_save_dir: str, kargs):
     rewards_hist: Dict[str, List[float]] = kargs["rewards"]
     fuel_hist: Dict[str, List[float]] = kargs["fuel_mps"]
     action_mag_hist: Dict[str, List[float]] = kargs["action_magnitudes_mps"]
+    orbital_elements_hist: Dict[str, Dict[str, List[float]]] = kargs["orbital_elements"]
     distances_hist: Dict[str, List[float]] = kargs["distances_m"]
 
     # 1. 3D Orbital Trajectories
@@ -285,6 +307,25 @@ def plot_inference(plot_save_dir: str, kargs):
     ax.grid(True, which="both", ls="-", alpha=0.5)
     fig.tight_layout()
     fig.savefig(os.path.join(plot_save_dir, "distances.png"))
+    plt.close(fig)
+
+    # 4. Orbital elements
+    fig, axes = plt.subplots(3, 2, figsize=(14, 12), sharex=True)
+    angle_elements = {"i_deg", "raan_deg", "argp_deg", "M_deg"}
+    for ax, (element, label) in zip(axes.flat, ORBITAL_ELEMENT_LABELS.items()):
+        for aid in agent_ids:
+            values = orbital_elements_hist[aid][element]
+            plot_values = _unwrap_angle_deg(values) if element in angle_elements else np.asarray(values, dtype=float)
+            ax.plot(times_min, plot_values, label=aid)
+        ax.set_ylabel(label)
+        ax.grid(True)
+        ax.legend()
+
+    axes[-1, 0].set_xlabel("Time (min)")
+    axes[-1, 1].set_xlabel("Time (min)")
+    fig.suptitle("Orbital Elements over Time")
+    fig.tight_layout()
+    fig.savefig(os.path.join(plot_save_dir, "orbital_elements.png"))
     plt.close(fig)
 
 def teardown_inference(inference_ctx: Dict[str, Any]) -> Dict[str, Any]:

@@ -265,6 +265,20 @@ class OrbitalEnv(ParallelEnv):
         """
         return float(self._agent_states[agent_id].get_remaining_delta_v().to_value(u.m / u.s))
 
+    def get_orbital_elements(self, agent_id: str) -> dict:
+        """
+        Return the current Keplerian elements of one agent as plain floats.
+        """
+        a, e, inc, raan, argp, mean_anomaly = self._agent_states[agent_id].orbit_state.get_keplerian()
+        return {
+            "a_m": float(a.to_value(u.m)),
+            "e": float(e.to_value(u.one) if hasattr(e, "to") else e),
+            "i_deg": float(inc.to_value(u.deg)),
+            "raan_deg": float(raan.to_value(u.deg)),
+            "argp_deg": float(argp.to_value(u.deg)),
+            "M_deg": float(mean_anomaly.to_value(u.deg)),
+        }
+
     def get_pairwise_distances_m(self) -> dict:
         """
         Return pairwise distances between all current agents in meters.
