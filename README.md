@@ -38,11 +38,12 @@ See [docs/architecture.md](docs/architecture.md) for diagrams of the training/in
    # Train with custom parameters
    uv run python app/train.py --name ppo_3i_1t_tnw --n-interceptors 3 --n-targets 1 --iterations 100 --num-workers 4 --maneuver-frame TNW
    ```
+   Training writes `run_parameters.json` alongside the run/checkpoint metadata so inference can recreate the scenario configuration later.
    
 3. **Run inference**:
    ```bash
-   # Inference with custom parameters
-   uv run python app/infer.py checkpoint --n-interceptors 3 --n-targets 1 --episode-length 250 --maneuver-frame TNW
+   # Inference reuses checkpoint metadata by default; CLI values override it
+   uv run python app/infer.py checkpoint --episode-length 250 --maneuver-frame TNW
    ```
 
 ## Testing
@@ -66,6 +67,10 @@ This project standardizes physical units, angles, and time across the codebase f
   - 3D delta-v maneuver vectors in the `ECI` or `TNW` frame (m/s).
   - In `TNW` mode, actions are converted to ECI at burn epoch before propagation.
   - Magnitudes are clipped by `env_config["max_delta_v_mps"]`.
+
+- Rewards and termination
+  - Reentry is triggered when altitude falls below `DEFAULT_OBJECTIVES["reentry_altitude_m"]`.
+  - The reentering agent receives `DEFAULT_REWARD_WEIGHTS["reentry_penalty"] == -100.0`.
 
 - Observations
   - Flat float vectors containing Keplerian elements and derived scalars (e.g., remaining Δv, pairwise distances).
@@ -121,6 +126,7 @@ uv run python app/train.py [OPTIONS]
 | `--n-targets` | int | 1                                          | Number of target agents.                                                                                                                                                 |
 | `--timestep` | float | 60.0                                       | Simulation timestep in seconds.                                                                                                                                          |
 | `--episode-length` | int | 100                                        | Maximum number of steps per episode (any collision causes an early termination).                                                                                         |
+| `--start-time` | str | `2025-01-01 00:00:00`                      | UTC simulation start time.                                                                                                                                               |
 | `--max-delta-v-mps` | float | 20.0                                       | Maximum single-maneuver delta-v in m/s.                                                                                                                                  |
 | `--maneuver-frame` | str | `eci`                                      | Maneuver frame used for actions: `eci` or `tnw`.                                                                                                                         |
 | `--freeze-targets` | flag | -                                          | Force targets to apply zero Δv at each step.                                                                                                                             |
@@ -187,8 +193,12 @@ After training your agents, you can run an inference session to visualize the or
 Use the `app/infer.py` script to load a checkpoint and run a single episode:
 
 ```bash
-uv run python app/infer.py checkpoint --n-interceptors 1 --n-targets 1 --episode-length 100 --maneuver-frame tnw
+uv run python app/infer.py checkpoint --episode-length 100 --maneuver-frame tnw
 ```
+
+Inference first looks for `run_parameters.json` in the checkpoint directory or its parents, then falls back to the RLlib checkpoint environment config. Explicit CLI values always override checkpoint metadata.
+
+`run_parameters.json` records the scenario metadata needed to reconstruct an inference run: `n_interceptors`, `n_targets`, `timestep`, `episode_length`, `start_time`, `max_delta_v_mps`, `maneuver_frame`, `freeze_targets`, `seed`, and observation slot counts.
 
 ### Command-line Arguments (Inference)
 
@@ -199,6 +209,7 @@ uv run python app/infer.py checkpoint --n-interceptors 1 --n-targets 1 --episode
 | `--n-targets` | int | checkpoint config | Override the number of target agents. |
 | `--timestep` | float | checkpoint config | Override the simulation timestep in seconds. |
 | `--episode-length` | int | checkpoint config | Override the number of steps per episode. |
+| `--start-time` | str | checkpoint config | Override the UTC simulation start time. |
 | `--max-delta-v-mps` | float | checkpoint config | Override the maximum single-maneuver delta-v in m/s. |
 | `--freeze-targets` / `--no-freeze-targets` | bool | checkpoint config | Override whether target agents are forced to apply zero Δv. |
 | `--maneuver-frame` | str | checkpoint config | Override the maneuver frame used for actions: `eci` or `tnw`. |
@@ -212,6 +223,7 @@ The script produces several plots in the output directory:
 1.  **`trajectories_3d.png`**: A 3D view of the orbital trajectories for all agents, with Earth for reference.
 2.  **`metrics_over_time.png`**: Time-series of rewards, remaining fuel (Δv), and action magnitudes for each agent.
 3.  **`distances.png`**: Relative distances between all pairs of agents over time (log scale), with the collision threshold highlighted.
+4.  **`orbital_elements.png`**: Time-series of semi-major axis, eccentricity, inclination, RAAN, argument of perigee, and mean anomaly for each agent. Angular values are unwrapped for cleaner trend lines.
 
 ## Learn to parametrize
 
