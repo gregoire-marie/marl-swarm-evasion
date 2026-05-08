@@ -82,12 +82,16 @@ sequenceDiagram
 
 ## Main Code Paths
 
-- `app/train.py` builds the PPO experiment, registers the PettingZoo environment,
-  configures policies, and writes Ray results/checkpoints.
+- `app/train.py` is the standard PPO entry point; shared PPO/Tune setup lives in
+  `src/main/python/experiment/train.py`.
+- `app/curriculum_train.py` is the callback-based curriculum entry point. It
+  loads the ordered curriculum config, uses one continuous RLlib/Tune run, and
+  delegates stage transitions to `CurriculumCallbacks.on_train_result()`.
 - `app/infer.py` loads a checkpoint, computes deterministic actions, steps the
   same environment, and produces trajectory/metric plots.
-- `src/main/python/utils/rllib_setup.py` centralizes run configuration, policy
-  setup, environment creation, and inference action helpers.
+- `src/main/python/utils/rllib_setup.py` centralizes run configuration, fixed
+  multi-agent policy setup, environment creation, curriculum batch trainability,
+  and inference action helpers.
 - `src/main/python/environment/orbital_env.py` owns the multi-agent simulation
   loop and the RL-facing spaces.
 - `src/main/python/agents/satellite_agent.py` owns per-agent state, fuel usage,

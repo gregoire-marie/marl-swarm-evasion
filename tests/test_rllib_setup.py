@@ -4,12 +4,14 @@ import pytest
 
 import src.main.python.utils.rllib_setup as rllib_setup
 from src.main.python.utils.rllib_setup import (
+    CURRICULUM_STAGE_INDEX,
     OrbitalRunSpec,
     DEFAULT_MAX_DELTA_V_MPS,
     RUN_PARAMETERS_FILENAME,
     _batch_single_item,
     _get_module_device,
     _unbatch_single_item,
+    build_curriculum_policies_to_train,
     build_orbital_env_config,
     build_policies_to_train,
     build_policy_setup,
@@ -31,6 +33,7 @@ from src.main.python.utils.rllib_setup import (
     save_run_parameters,
     validate_run_spec,
 )
+from src.main.python.experiment.curriculum import CurriculumConfig
 from ray.rllib.core.columns import Columns
 
 
@@ -182,8 +185,8 @@ def test_run_parameters_roundtrip_and_observation_slot_counts(tmp_path):
         "interceptors": 2,
         "targets": 3,
         "total_agents": 5,
-        "features_per_agent": 7,
-        "observation_dim": 35,
+        "features_per_agent": 11,
+        "observation_dim": 55,
     }
     assert get_observation_slot_counts(normalized_spec) == run_parameters["observation_slot_counts"]
     assert run_spec_from_run_parameters(run_parameters) == normalized_spec
@@ -358,6 +361,58 @@ def test_build_policies_to_train_and_policy_mapping():
     ) == ["interceptor_policy"]
     assert build_policies_to_train(["target_policy"], freeze_targets=True) == ["target_policy"]
     assert rllib_policy_mapping_fn("target_0") == "target_policy"
+
+
+def test_curriculum_policies_to_train_uses_batch_stage_metadata():
+    curriculum = CurriculumConfig.from_mapping(
+        {
+            "N_max": 1,
+            "M_max": 1,
+            "stages": [
+                {
+                    "stage_id": "S1",
+                    "n_interceptors": 1,
+                    "n_targets": 1,
+                    "disabled_actions": ["targets"],
+                    "frozen_policies": [],
+                    "trainable_policies": ["interceptor_policy"],
+                    "maneuver_frame": "ECI",
+                    "propagator": "keplerian",
+                    "initial_condition_distribution": "pursuit_evasion",
+                    "max_delta_v_mps": 10.0,
+                    "episode_length": 5,
+                    "advance_when": {
+                        "min_iterations": 1,
+                        "consecutive_iterations": 1,
+                        "conditions": [{"metric": "intercept_success_rate", "operator": ">", "threshold": 0.8}],
+                    },
+                },
+                {
+                    "stage_id": "S2",
+                    "n_interceptors": 1,
+                    "n_targets": 1,
+                    "disabled_actions": [],
+                    "frozen_policies": ["interceptor_policy"],
+                    "trainable_policies": ["target_policy"],
+                    "maneuver_frame": "ECI",
+                    "propagator": "keplerian",
+                    "initial_condition_distribution": "pursuit_evasion",
+                    "max_delta_v_mps": 10.0,
+                    "episode_length": 5,
+                },
+            ],
+        }
+    )
+
+    policies_to_train = build_curriculum_policies_to_train(curriculum)
+
+    assert policies_to_train("interceptor_policy", {CURRICULUM_STAGE_INDEX: np.array([0, 0])})
+    assert not policies_to_train("target_policy", {CURRICULUM_STAGE_INDEX: np.array([0, 0])})
+    assert policies_to_train("target_policy", {CURRICULUM_STAGE_INDEX: np.array([1])})
+    assert not policies_to_train("interceptor_policy", {CURRICULUM_STAGE_INDEX: np.array([0, 1])})
+
+    with pytest.raises(ValueError, match="missing curriculum_stage_index"):
+        policies_to_train("interceptor_policy", {})
 
 
 def test_batch_and_unbatch_helpers_handle_nested_structures():

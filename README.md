@@ -40,7 +40,13 @@ See [docs/architecture.md](docs/architecture.md) for diagrams of the training/in
    ```
    Training writes `run_parameters.json` alongside the run/checkpoint metadata so inference can recreate the scenario configuration later.
    
-3. **Run inference**:
+3. **Run curriculum training (single RLlib/Tune run)**:
+   ```bash
+   uv run python app/curriculum_train.py --curriculum-config path/to/curriculum.json --iterations 100
+   ```
+   Curriculum training uses fixed `interceptor_policy` and `target_policy` policies and advances stages from RLlib callbacks.
+
+4. **Run inference**:
    ```bash
    # Inference reuses checkpoint metadata by default; CLI values override it
    uv run python app/infer.py checkpoint --episode-length 250 --maneuver-frame TNW
@@ -162,7 +168,7 @@ tensorboard --logdir ~/results/marl-swarm-evasion/ray_results
 Use this page to track the most important metrics:
 
 *   **Success and Failures**: `intercept_success_rate` and `out_of_fuel_rate`.
-*   **Collisions**: `interceptors_collision_rate` and `targets_collision_rate`.
+*   **Collisions**: `interceptors_collision_rate`, `targets_collision_rate`, and `collision_rate`.
 *   **Episode Metrics**: Average steps per episode `episode_steps` (custom) and episode length `episode_len_mean` (default).
 *   **Training Performance**: Mean episode return.
 
@@ -176,13 +182,25 @@ In the TensorBoard dashboard, you will find several categories of metrics:
 
 2.  **Custom Orbital Metrics** (found under `ray/tune/env_runners/`):
     *   `intercept_success_rate`: Percentage of episodes where an interceptor successfully reached a target.
+    *   `target_survival_rate`: Percentage of episodes where targets avoided interception.
     *   `interceptors_collision_rate`: Rate of collisions between interceptors.
     *   `targets_collision_rate`: Rate of collisions between targets.
+    *   `collision_rate`: Unified same-role collision rate.
     *   `out_of_fuel_rate`: Percentage of episodes ending because agents ran out of Δv budget.
     *   `reentry_rate`: Percentage of episodes ending because agents reentered the atmosphere.
     *   `episode_steps`: Average number of steps per episode (shorter episodes often indicate early collisions or successes).
 
 These metrics provide a direct view of whether your agents are actually learning the desired orbital behaviors or just maximizing rewards through unintended shortcuts.
+
+### Curriculum Learning
+
+Curriculum training uses `app/curriculum_train.py` and requires a JSON curriculum config. The run keeps exactly two fixed RLlib policies, `interceptor_policy` and `target_policy`, and advances stages through `CurriculumCallbacks.on_train_result()` inside one continuous PPO/Tune run.
+
+Each curriculum stage defines active interceptor/target counts, disabled-action teams, frozen/trainable policies, maneuver frame, propagator, initial-condition distribution, max Δv, episode length, and explicit `advance_when` transition criteria. Non-final stages must include `advance_when`; the final stage continues until the normal Tune stopping criteria.
+
+The environment exposes fixed padded/masked observations at the configured maximum capacity (`N_max`, `M_max`). Disabled teams remain physical objects in the simulation but are omitted from the returned observation dict, so RLlib does not request actions or produce policy batches for them.
+
+Curriculum metrics include `curriculum/stage_id`, `curriculum/stage_index`, `curriculum/n_interceptors`, `curriculum/n_targets`, `curriculum/iterations_in_stage`, and `curriculum/stage_transition_count`.
 
 ## Inference and Visualization
 
