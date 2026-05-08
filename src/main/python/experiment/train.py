@@ -1,7 +1,7 @@
 import argparse
 import json
 import os
-from typing import Any, Dict, Optional, Type
+from typing import Any, Dict, Mapping, Optional, Type
 
 import ray
 from ray import tune
@@ -88,6 +88,10 @@ def validate_training_args(args: argparse.Namespace) -> None:
         raise ValueError("--num-gpus must be >= 0.")
     if args.checkpoint_freq < 0:
         raise ValueError("--checkpoint-freq must be >= 0.")
+    if getattr(args, "ray_num_cpus", None) is not None and args.ray_num_cpus <= 0:
+        raise ValueError("--ray-num-cpus must be >= 1.")
+    if getattr(args, "torch_num_threads", None) is not None and args.torch_num_threads <= 0:
+        raise ValueError("--torch-num-threads must be >= 1.")
 
 
 def build_experiment_name(
@@ -123,6 +127,7 @@ def setup_training(
     args: argparse.Namespace,
     *,
     curriculum_config: Optional[CurriculumConfig] = None,
+    curriculum_parameters: Optional[Mapping[str, Any]] = None,
     callbacks_cls: Type[OrbitalPhysicsCallbacks] = OrbitalPhysicsCallbacks,
 ) -> Dict[str, Any]:
     validate_training_args(args)
@@ -138,7 +143,7 @@ def setup_training(
     results_dir = os.path.join(local_dir, experiment_name)
     save_run_parameters(spec, results_dir)
     if curriculum_config is not None:
-        _save_curriculum_config(curriculum_config, results_dir)
+        _save_curriculum_config(curriculum_config, results_dir, curriculum_parameters=curriculum_parameters)
 
     env_name = register_orbital_env()
     policy_setup = build_policy_setup(spec, curriculum_config=curriculum_config)
@@ -177,6 +182,7 @@ def setup_training(
         "args": args,
         "spec": spec,
         "curriculum_config": curriculum_config,
+        "curriculum_parameters": curriculum_parameters,
         "local_dir": local_dir,
         "experiment_name": experiment_name,
         "config": config,
@@ -216,7 +222,11 @@ def launch_training(training_ctx: Dict[str, Any]) -> Dict[str, Any]:
             save_run_parameters(training_ctx["spec"], training_ctx["last_checkpoint_path"])
             curriculum_config = training_ctx.get("curriculum_config")
             if curriculum_config is not None:
-                _save_curriculum_config(curriculum_config, training_ctx["last_checkpoint_path"])
+                _save_curriculum_config(
+                    curriculum_config,
+                    training_ctx["last_checkpoint_path"],
+                    curriculum_parameters=training_ctx.get("curriculum_parameters"),
+                )
 
     return training_ctx
 
@@ -227,10 +237,16 @@ def teardown_training(training_ctx: Dict[str, Any]) -> Dict[str, Any]:
     return training_ctx
 
 
-def _save_curriculum_config(curriculum_config: CurriculumConfig, output_dir: str) -> str:
+def _save_curriculum_config(
+    curriculum_config: CurriculumConfig,
+    output_dir: str,
+    *,
+    curriculum_parameters: Optional[Mapping[str, Any]] = None,
+) -> str:
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, "curriculum_config.json")
+    output_data = dict(curriculum_parameters) if curriculum_parameters is not None else curriculum_config.to_dict()
     with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(curriculum_config.to_dict(), f, indent=2, sort_keys=True)
+        json.dump(output_data, f, indent=2, sort_keys=True)
         f.write("\n")
     return output_path

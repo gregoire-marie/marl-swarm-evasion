@@ -1,6 +1,8 @@
+import argparse
+
 import pytest
 
-from src.main.python.experiment.curriculum import CurriculumConfig
+from src.main.python.experiment.curriculum import CurriculumConfig, CurriculumTrainingConfig, CurriculumTrainingParameters
 
 
 def valid_curriculum_dict():
@@ -55,6 +57,93 @@ def test_curriculum_config_loads_and_validates_stages():
     assert config.stages[0].advance_when.consecutive_iterations == 3
     assert config.stages[1].advance_when is None
     assert config.stages[1].maneuver_frame == "TNW"
+
+
+def test_curriculum_training_config_loads_json_owned_training_parameters():
+    data = valid_curriculum_dict()
+    data.update(
+        {
+            "iterations": 12,
+            "batch-size": 256,
+            "lr": 1e-4,
+            "gamma": 0.95,
+            "num-epochs": 3,
+            "num-workers": 0,
+            "num-gpus": 0.0,
+            "checkpoint-freq": 5,
+            "resume": True,
+            "name": "curriculum_smoke",
+            "local-dir": "/tmp/ray-results",
+            "ray-num-cpus": 2,
+            "torch-num-threads": 1,
+        }
+    )
+
+    config = CurriculumTrainingConfig.from_mapping(data)
+    namespace = config.training.to_namespace()
+
+    assert config.curriculum.N_max == 2
+    assert config.training.num_workers == 0
+    assert config.training.ray_num_cpus == 2
+    assert config.training.torch_num_threads == 1
+    assert namespace == argparse.Namespace(
+        iterations=12,
+        batch_size=256,
+        lr=1e-4,
+        gamma=0.95,
+        num_epochs=3,
+        seed=None,
+        num_workers=0,
+        num_gpus=0.0,
+        checkpoint_freq=5,
+        resume=True,
+        name="curriculum_smoke",
+        local_dir="/tmp/ray-results",
+        ray_num_cpus=2,
+        torch_num_threads=1,
+    )
+    assert config.to_dict()["num-workers"] == 0
+    assert config.to_dict()["ray-num-cpus"] == 2
+    assert config.to_dict()["torch-num-threads"] == 1
+
+
+def test_curriculum_training_parameters_accept_snake_case_aliases():
+    params = CurriculumTrainingParameters.from_mapping(
+        {
+            "batch_size": 128,
+            "num_epochs": 2,
+            "num_workers": 0,
+            "num_gpus": 0,
+            "checkpoint_freq": 0,
+            "ray_num_cpus": 1,
+            "torch_num_threads": 1,
+        }
+    )
+
+    assert params.batch_size == 128
+    assert params.num_epochs == 2
+    assert params.num_workers == 0
+    assert params.checkpoint_freq == 0
+    assert params.ray_num_cpus == 1
+    assert params.torch_num_threads == 1
+
+
+def test_curriculum_training_parameters_reject_conflicting_aliases():
+    with pytest.raises(ValueError, match="Conflicting values"):
+        CurriculumTrainingParameters.from_mapping({"num-workers": 1, "num_workers": 2})
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value", "message"),
+    [
+        ("ray-num-cpus", 0, "ray-num-cpus"),
+        ("torch-num-threads", 0, "torch-num-threads"),
+        ("num-workers", -1, "num-workers"),
+    ],
+)
+def test_curriculum_training_parameters_reject_invalid_resource_limits(field_name, value, message):
+    with pytest.raises(ValueError, match=message):
+        CurriculumTrainingParameters.from_mapping({field_name: value})
 
 
 @pytest.mark.parametrize(

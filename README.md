@@ -42,9 +42,9 @@ See [docs/architecture.md](docs/architecture.md) for diagrams of the training/in
    
 3. **Run curriculum training (single RLlib/Tune run)**:
    ```bash
-   uv run python app/curriculum_train.py --curriculum-config path/to/curriculum.json --iterations 100
+   uv run python app/curriculum_train.py --curriculum-config path/to/curriculum.json
    ```
-   Curriculum training uses fixed `interceptor_policy` and `target_policy` policies and advances stages from RLlib callbacks.
+   Curriculum training reads its PPO/Tune/runtime parameters from the JSON file, uses fixed `interceptor_policy` and `target_policy` policies, and advances stages from RLlib callbacks.
 
 4. **Run inference**:
    ```bash
@@ -153,15 +153,10 @@ uv run python app/train.py [OPTIONS]
 
 ## Curriculum Training
 
-`app/curriculum_train.py` runs one continuous RLlib PPO/Tune experiment and lets `CurriculumCallbacks.on_train_result()` advance stages. It requires a JSON curriculum file; stage thresholds are intentionally config-owned rather than hidden in code defaults.
+`app/curriculum_train.py` runs one continuous RLlib PPO/Tune experiment and lets `CurriculumCallbacks.on_train_result()` advance stages. It requires a JSON curriculum file; curriculum training parameters and stage thresholds are intentionally config-owned rather than hidden in code defaults or CLI overrides.
 
 ```bash
-uv run python app/curriculum_train.py \
-  --curriculum-config configs/curriculum_1v1_to_nvm.json \
-  --iterations 200 \
-  --batch-size 4000 \
-  --num-workers 4 \
-  --checkpoint-freq 10
+uv run python app/curriculum_train.py --curriculum-config configs/curriculum_1v1_to_nvm.json
 ```
 
 Curriculum runs always use two fixed policies:
@@ -175,6 +170,18 @@ Agent IDs are mapped by prefix: `interceptor_*` uses `interceptor_policy`, and `
 
 ```json
 {
+  "iterations": 200,
+  "batch-size": 4000,
+  "lr": 0.00005,
+  "gamma": 0.99,
+  "num-epochs": 10,
+  "num-workers": 2,
+  "num-gpus": 0,
+  "checkpoint-freq": 10,
+  "resume": false,
+  "local-dir": "~/results/marl-swarm-evasion/ray_results",
+  "ray-num-cpus": 4,
+  "torch-num-threads": 1,
   "N_max": 4,
   "M_max": 3,
   "timestep": 60.0,
@@ -275,7 +282,11 @@ Agent IDs are mapped by prefix: `interceptor_*` uses `interceptor_policy`, and `
 }
 ```
 
-Non-final stages must define `advance_when`. The final stage must not define `advance_when`; it continues until the normal `--iterations` stopping criterion. Supported `operator` values are `>`, `>=`, `<`, `<=`, and `==`.
+Non-final stages must define `advance_when`. The final stage must not define `advance_when`; it continues until the JSON `iterations` stopping criterion. Supported `operator` values are `>`, `>=`, `<`, `<=`, and `==`.
+
+Metrics that can be used in `advance_when.conditions` are listed in [Key Metrics](#key-metrics).
+
+Curriculum training accepts these top-level run parameters in the same JSON file: `iterations`, `batch-size`, `lr`, `gamma`, `num-epochs`, `num-workers`, `num-gpus`, `checkpoint-freq`, `resume`, `name`, `local-dir`, `ray-num-cpus`, and `torch-num-threads`. `ray-num-cpus` caps Ray's CPU budget, while `torch-num-threads` sets the PyTorch thread budget for the driver and Ray workers via thread-related environment variables.
 
 Disabled teams remain physically present but are omitted from RLlib observations, so no actions are computed for them. Frozen-policy teams are still controllable and act through their mapped policy, but `policies_to_train` skips optimizer updates for batches collected under that stage.
 
@@ -300,7 +311,7 @@ Use this page to track the most important metrics:
 *   **Episode Metrics**: Average steps per episode `episode_steps` (custom) and episode length `episode_len_mean` (default).
 *   **Training Performance**: Mean episode return.
 
-### Key Metrics to Watch
+### Key Metrics
 
 In the TensorBoard dashboard, you will find several categories of metrics:
 

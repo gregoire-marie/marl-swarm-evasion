@@ -85,8 +85,9 @@ sequenceDiagram
 - `app/train.py` is the standard PPO entry point; shared PPO/Tune setup lives in
   `src/main/python/experiment/train.py`.
 - `app/curriculum_train.py` is the callback-based curriculum entry point. It
-  loads the ordered curriculum config, uses one continuous RLlib/Tune run, and
-  delegates stage transitions to `CurriculumCallbacks.on_train_result()`.
+  loads the ordered curriculum config plus PPO/Tune/runtime parameters from one
+  JSON file, uses one continuous RLlib/Tune run, and delegates stage transitions
+  to `CurriculumCallbacks.on_train_result()`.
 - `app/infer.py` loads a checkpoint, computes deterministic actions, steps the
   same environment, and produces trajectory/metric plots.
 - `src/main/python/utils/rllib_setup.py` centralizes run configuration, fixed

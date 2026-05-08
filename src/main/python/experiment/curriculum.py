@@ -1,4 +1,5 @@
 import json
+from argparse import Namespace
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, Mapping, Optional, Sequence, Tuple
@@ -341,6 +342,130 @@ class CurriculumConfig:
             raise ValueError(f"Unknown curriculum stage index: {stage_index}") from exc
 
 
+@dataclass(frozen=True)
+class CurriculumTrainingParameters:
+    iterations: int = 20
+    batch_size: int = 4000
+    lr: float = 5e-5
+    gamma: float = 0.99
+    num_epochs: int = 10
+    num_workers: int = 1
+    num_gpus: float = 0.0
+    checkpoint_freq: int = 1
+    resume: bool = False
+    name: Optional[str] = None
+    local_dir: str = "~/results/marl-swarm-evasion/ray_results"
+    ray_num_cpus: Optional[int] = None
+    torch_num_threads: Optional[int] = None
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> "CurriculumTrainingParameters":
+        params = cls(
+            iterations=int(_parameter_value(data, "iterations", default=20)),
+            batch_size=int(_parameter_value(data, "batch-size", "batch_size", default=4000)),
+            lr=float(_parameter_value(data, "lr", default=5e-5)),
+            gamma=float(_parameter_value(data, "gamma", default=0.99)),
+            num_epochs=int(_parameter_value(data, "num-epochs", "num_epochs", default=10)),
+            num_workers=int(_parameter_value(data, "num-workers", "num_workers", default=1)),
+            num_gpus=float(_parameter_value(data, "num-gpus", "num_gpus", default=0.0)),
+            checkpoint_freq=int(_parameter_value(data, "checkpoint-freq", "checkpoint_freq", default=1)),
+            resume=_bool_parameter_value(data, "resume", default=False),
+            name=_optional_str_parameter_value(data, "name"),
+            local_dir=str(
+                _parameter_value(
+                    data,
+                    "local-dir",
+                    "local_dir",
+                    default="~/results/marl-swarm-evasion/ray_results",
+                )
+            ),
+            ray_num_cpus=_optional_int_parameter_value(data, "ray-num-cpus", "ray_num_cpus"),
+            torch_num_threads=_optional_int_parameter_value(data, "torch-num-threads", "torch_num_threads"),
+        )
+        params.validate()
+        return params
+
+    def validate(self) -> None:
+        if self.iterations <= 0:
+            raise ValueError("iterations must be >= 1.")
+        if self.batch_size <= 0:
+            raise ValueError("batch-size must be >= 1.")
+        if self.num_epochs <= 0:
+            raise ValueError("num-epochs must be >= 1.")
+        if self.num_workers < 0:
+            raise ValueError("num-workers must be >= 0.")
+        if self.num_gpus < 0:
+            raise ValueError("num-gpus must be >= 0.")
+        if self.checkpoint_freq < 0:
+            raise ValueError("checkpoint-freq must be >= 0.")
+        if self.ray_num_cpus is not None and self.ray_num_cpus <= 0:
+            raise ValueError("ray-num-cpus must be >= 1.")
+        if self.torch_num_threads is not None and self.torch_num_threads <= 0:
+            raise ValueError("torch-num-threads must be >= 1.")
+
+    def to_namespace(self) -> Namespace:
+        return Namespace(
+            iterations=self.iterations,
+            batch_size=self.batch_size,
+            lr=self.lr,
+            gamma=self.gamma,
+            num_epochs=self.num_epochs,
+            seed=None,
+            num_workers=self.num_workers,
+            num_gpus=self.num_gpus,
+            checkpoint_freq=self.checkpoint_freq,
+            resume=self.resume,
+            name=self.name,
+            local_dir=self.local_dir,
+            ray_num_cpus=self.ray_num_cpus,
+            torch_num_threads=self.torch_num_threads,
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        data = {
+            "iterations": self.iterations,
+            "batch-size": self.batch_size,
+            "lr": self.lr,
+            "gamma": self.gamma,
+            "num-epochs": self.num_epochs,
+            "num-workers": self.num_workers,
+            "num-gpus": self.num_gpus,
+            "checkpoint-freq": self.checkpoint_freq,
+            "resume": self.resume,
+            "local-dir": self.local_dir,
+        }
+        if self.name is not None:
+            data["name"] = self.name
+        if self.ray_num_cpus is not None:
+            data["ray-num-cpus"] = self.ray_num_cpus
+        if self.torch_num_threads is not None:
+            data["torch-num-threads"] = self.torch_num_threads
+        return data
+
+
+@dataclass(frozen=True)
+class CurriculumTrainingConfig:
+    curriculum: CurriculumConfig
+    training: CurriculumTrainingParameters
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> "CurriculumTrainingConfig":
+        return cls(
+            curriculum=CurriculumConfig.from_mapping(data),
+            training=CurriculumTrainingParameters.from_mapping(data),
+        )
+
+    @classmethod
+    def from_json_file(cls, path: str) -> "CurriculumTrainingConfig":
+        with open(Path(path).expanduser(), "r", encoding="utf-8") as f:
+            return cls.from_mapping(json.load(f))
+
+    def to_dict(self) -> Dict[str, Any]:
+        data = self.curriculum.to_dict()
+        data.update(self.training.to_dict())
+        return data
+
+
 def _validated_names(values: Iterable[Any], known_values: set, field_name: str) -> Tuple[str, ...]:
     if not isinstance(values, (list, tuple)):
         raise ValueError(f"{field_name} must be a list.")
@@ -360,3 +485,31 @@ def parse_curriculum_maneuver_frame(value: str) -> str:
             f"Unsupported maneuver frame '{value}'. Supported frames: {sorted(SUPPORTED_MANEUVER_FRAMES)}."
         )
     return frame
+
+
+def _parameter_value(data: Mapping[str, Any], *keys: str, default: Any) -> Any:
+    present_keys = [key for key in keys if key in data]
+    if not present_keys:
+        return default
+    value = data[present_keys[0]]
+    conflicting_keys = [key for key in present_keys[1:] if data[key] != value]
+    if conflicting_keys:
+        raise ValueError(f"Conflicting values for equivalent parameter names: {present_keys}.")
+    return value
+
+
+def _optional_int_parameter_value(data: Mapping[str, Any], *keys: str) -> Optional[int]:
+    value = _parameter_value(data, *keys, default=None)
+    return None if value is None else int(value)
+
+
+def _optional_str_parameter_value(data: Mapping[str, Any], *keys: str) -> Optional[str]:
+    value = _parameter_value(data, *keys, default=None)
+    return None if value is None else str(value)
+
+
+def _bool_parameter_value(data: Mapping[str, Any], *keys: str, default: bool) -> bool:
+    value = _parameter_value(data, *keys, default=default)
+    if not isinstance(value, bool):
+        raise ValueError(f"{keys[0]} must be a JSON boolean.")
+    return value
