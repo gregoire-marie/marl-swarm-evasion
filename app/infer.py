@@ -12,6 +12,7 @@ from src.main.python.utils.helpers import get_logger, policy_mapping_fn, resolve
 from src.main.python.utils.rllib_setup import (
     compute_deterministic_module_action,
     create_raw_env,
+    load_run_parameters_from_checkpoint,
     parse_maneuver_frame,
     register_orbital_env,
     run_spec_from_args,
@@ -32,6 +33,7 @@ def parse_args():
     parser.add_argument("--n-targets", type=int, default=None, help="Number of target agents. Defaults to the checkpoint config.")
     parser.add_argument("--timestep", type=float, default=None, help="Simulation timestep in seconds. Defaults to the checkpoint config.")
     parser.add_argument("--episode-length", type=int, default=None, help="Number of steps per episode. Defaults to the checkpoint config.")
+    parser.add_argument("--start-time", type=str, default=None, help="Simulation start time (UTC). Defaults to the checkpoint config.")
     parser.add_argument("--max-delta-v-mps", type=float, default=None, help="The maximum single maneuver delta-v in m/s. Defaults to the checkpoint config.")
     parser.add_argument(
         "--freeze-targets",
@@ -59,13 +61,19 @@ def setup_inference(args: argparse.Namespace, checkpoint_path: str) -> Dict[str,
         ray.init(ignore_reinit_error=True)
 
     algo = Algorithm.from_checkpoint(checkpoint_path)
-    checkpoint_spec = run_spec_from_rllib_env_config(algo.config.env_config)
+    rllib_checkpoint_spec = run_spec_from_rllib_env_config(algo.config.env_config)
+    metadata_spec, run_parameters_path = load_run_parameters_from_checkpoint(
+        checkpoint_path,
+        base_spec=rllib_checkpoint_spec,
+    )
+    checkpoint_spec = metadata_spec or rllib_checkpoint_spec
     spec = run_spec_from_args(args, base_spec=checkpoint_spec)
     env = create_raw_env(spec)
 
     return {
         "args": args,
         "spec": spec,
+        "run_parameters_path": run_parameters_path,
         "checkpoint_path": checkpoint_path,
         "algo": algo,
         "env": env,
@@ -301,6 +309,8 @@ def main():
     try:
         # Set up the inference
         inference_ctx = setup_inference(args=args, checkpoint_path=checkpoint_path)
+        if inference_ctx.get("run_parameters_path"):
+            logger.info(f"Loaded run parameters: {inference_ctx['run_parameters_path']}")
         logger.info(f"Using inference spec: {inference_ctx['spec']}")
 
         logger.info("Starting simulation...")

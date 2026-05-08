@@ -6,6 +6,7 @@ import src.main.python.utils.rllib_setup as rllib_setup
 from src.main.python.utils.rllib_setup import (
     OrbitalRunSpec,
     DEFAULT_MAX_DELTA_V_MPS,
+    RUN_PARAMETERS_FILENAME,
     _batch_single_item,
     _get_module_device,
     _unbatch_single_item,
@@ -16,12 +17,18 @@ from src.main.python.utils.rllib_setup import (
     compute_deterministic_module_action,
     create_raw_env,
     create_rllib_env,
+    find_run_parameters_path,
     get_orbital_env_name,
+    get_observation_slot_counts,
+    load_run_parameters_from_checkpoint,
     parse_maneuver_frame,
     register_orbital_env,
     rllib_policy_mapping_fn,
+    run_parameters_from_spec,
     run_spec_from_args,
     run_spec_from_rllib_env_config,
+    run_spec_from_run_parameters,
+    save_run_parameters,
     validate_run_spec,
 )
 from ray.rllib.core.columns import Columns
@@ -152,6 +159,65 @@ def test_build_env_configs_include_expected_fields():
         "seed": 9,
         "orbital_env_config": build_orbital_env_config(spec),
     }
+
+
+def test_run_parameters_roundtrip_and_observation_slot_counts(tmp_path):
+    spec = OrbitalRunSpec(
+        n_interceptors=2,
+        n_targets=3,
+        timestep=120.0,
+        episode_length=250,
+        start_time="2026-01-01 00:00:00",
+        max_delta_v_mps=15.0,
+        maneuver_frame="tnw",
+        freeze_targets=True,
+        seed=9,
+    )
+
+    normalized_spec = validate_run_spec(spec)
+    run_parameters = run_parameters_from_spec(spec)
+
+    assert run_parameters["maneuver_frame"] == "TNW"
+    assert run_parameters["observation_slot_counts"] == {
+        "interceptors": 2,
+        "targets": 3,
+        "total_agents": 5,
+        "features_per_agent": 7,
+        "observation_dim": 35,
+    }
+    assert get_observation_slot_counts(normalized_spec) == run_parameters["observation_slot_counts"]
+    assert run_spec_from_run_parameters(run_parameters) == normalized_spec
+
+    output_path = save_run_parameters(spec, str(tmp_path))
+    assert output_path == str(tmp_path / RUN_PARAMETERS_FILENAME)
+    assert (tmp_path / RUN_PARAMETERS_FILENAME).is_file()
+    assert run_spec_from_run_parameters(run_parameters) == normalized_spec
+
+
+def test_load_run_parameters_from_checkpoint_searches_parent_dirs(tmp_path):
+    base_spec = OrbitalRunSpec(timestep=12.0, episode_length=34, max_delta_v_mps=56.0)
+    trial_dir = tmp_path / "experiment" / "trial"
+    checkpoint_dir = trial_dir / "checkpoint_000001"
+    checkpoint_dir.mkdir(parents=True)
+    run_parameters_path = tmp_path / "experiment" / RUN_PARAMETERS_FILENAME
+    run_parameters_path.write_text(
+        '{"n_interceptors": 4, "n_targets": 2, "seed": 13}\n',
+        encoding="utf-8",
+    )
+
+    assert find_run_parameters_path(str(checkpoint_dir)) == str(tmp_path / "experiment" / RUN_PARAMETERS_FILENAME)
+
+    loaded_spec, loaded_path = load_run_parameters_from_checkpoint(str(checkpoint_dir), base_spec=base_spec)
+
+    assert loaded_spec == OrbitalRunSpec(
+        n_interceptors=4,
+        n_targets=2,
+        timestep=12.0,
+        episode_length=34,
+        max_delta_v_mps=56.0,
+        seed=13,
+    )
+    assert loaded_path == str(tmp_path / "experiment" / RUN_PARAMETERS_FILENAME)
 
 
 def test_build_agent_configs_delegates_to_scenario_builder(monkeypatch):

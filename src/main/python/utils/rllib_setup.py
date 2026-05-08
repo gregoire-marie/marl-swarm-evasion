@@ -1,6 +1,8 @@
 import argparse
-from dataclasses import dataclass, fields, replace
-from typing import Any, Dict, Mapping, Optional
+import json
+import os
+from dataclasses import asdict, dataclass, fields, replace
+from typing import Any, Dict, Mapping, Optional, Tuple
 
 import numpy as np
 from ray.rllib.core.columns import Columns
@@ -18,6 +20,8 @@ from src.main.python.utils.helpers import policy_mapping_fn
 SUPPORTED_MANEUVER_FRAMES = ("ECI", "TNW")
 DEFAULT_START_TIME = "2025-01-01 00:00:00"
 DEFAULT_MAX_DELTA_V_MPS = 20.0
+RUN_PARAMETERS_FILENAME = "run_parameters.json"
+OBSERVATION_FEATURES_PER_AGENT = 7
 
 
 @dataclass(frozen=True)
@@ -31,6 +35,76 @@ class OrbitalRunSpec:
     maneuver_frame: str = "ECI"
     freeze_targets: bool = False
     seed: int = 42
+
+
+def get_observation_slot_counts(spec: OrbitalRunSpec) -> Dict[str, int]:
+    n_agents = spec.n_interceptors + spec.n_targets
+    return {
+        "interceptors": spec.n_interceptors,
+        "targets": spec.n_targets,
+        "total_agents": n_agents,
+        "features_per_agent": OBSERVATION_FEATURES_PER_AGENT,
+        "observation_dim": OBSERVATION_FEATURES_PER_AGENT * n_agents,
+    }
+
+
+def run_parameters_from_spec(spec: OrbitalRunSpec) -> Dict[str, Any]:
+    normalized_spec = validate_run_spec(spec)
+    return {
+        **asdict(normalized_spec),
+        "observation_slot_counts": get_observation_slot_counts(normalized_spec),
+    }
+
+
+def run_spec_from_run_parameters(
+    run_parameters: Mapping[str, Any],
+    *,
+    base_spec: Optional[OrbitalRunSpec] = None,
+) -> OrbitalRunSpec:
+    spec_kwargs = {}
+    for spec_field in fields(OrbitalRunSpec):
+        if spec_field.name in run_parameters:
+            spec_kwargs[spec_field.name] = run_parameters[spec_field.name]
+    return validate_run_spec(replace(base_spec or OrbitalRunSpec(), **spec_kwargs))
+
+
+def save_run_parameters(spec: OrbitalRunSpec, output_dir: str) -> str:
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, RUN_PARAMETERS_FILENAME)
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(run_parameters_from_spec(spec), f, indent=2, sort_keys=True)
+        f.write("\n")
+    return output_path
+
+
+def find_run_parameters_path(start_path: str) -> Optional[str]:
+    current_path = os.path.normpath(os.path.abspath(os.path.expanduser(start_path)))
+    if not os.path.isdir(current_path):
+        current_path = os.path.dirname(current_path)
+
+    while True:
+        candidate_path = os.path.join(current_path, RUN_PARAMETERS_FILENAME)
+        if os.path.isfile(candidate_path):
+            return candidate_path
+
+        parent_path = os.path.dirname(current_path)
+        if parent_path == current_path:
+            return None
+        current_path = parent_path
+
+
+def load_run_parameters_from_checkpoint(
+    checkpoint_path: str,
+    *,
+    base_spec: Optional[OrbitalRunSpec] = None,
+) -> Tuple[Optional[OrbitalRunSpec], Optional[str]]:
+    run_parameters_path = find_run_parameters_path(checkpoint_path)
+    if run_parameters_path is None:
+        return None, None
+
+    with open(run_parameters_path, "r", encoding="utf-8") as f:
+        run_parameters = json.load(f)
+    return run_spec_from_run_parameters(run_parameters, base_spec=base_spec), run_parameters_path
 
 
 def parse_maneuver_frame(value: str) -> str:

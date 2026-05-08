@@ -10,6 +10,7 @@ from ray.rllib.algorithms.ppo import PPOConfig
 from src.main.python.utils.helpers import get_logger
 from src.main.python.utils.callbacks import OrbitalPhysicsCallbacks
 from src.main.python.utils.rllib_setup import (
+    DEFAULT_START_TIME,
     build_policies_to_train,
     build_policy_setup,
     build_rllib_env_config,
@@ -17,6 +18,7 @@ from src.main.python.utils.rllib_setup import (
     register_orbital_env,
     rllib_policy_mapping_fn,
     run_spec_from_args,
+    save_run_parameters,
 )
 
 # Initialize logger
@@ -35,6 +37,7 @@ def parse_args():
     scenario_group.add_argument("--n-targets", type=int, default=1, help="Number of target agents.")
     scenario_group.add_argument("--timestep", type=float, default=60.0, help="Simulation timestep in seconds.")
     scenario_group.add_argument("--episode-length", type=int, default=100, help="Number of steps per episode.")
+    scenario_group.add_argument("--start-time", type=str, default=DEFAULT_START_TIME, help="Simulation start time (UTC).")
     scenario_group.add_argument(
         "--max-delta-v-mps",
         type=float,
@@ -104,6 +107,8 @@ def setup_training(args: argparse.Namespace) -> Dict[str, Any]:
     local_dir = os.path.abspath(os.path.expanduser(args.local_dir))
     os.makedirs(local_dir, exist_ok=True)
     experiment_name = _build_experiment_name(args, spec.maneuver_frame)
+    results_dir = os.path.join(local_dir, experiment_name)
+    save_run_parameters(spec, results_dir)
     env_name = register_orbital_env()
     policy_setup = build_policy_setup(spec)
     policies_to_train = build_policies_to_train(
@@ -144,7 +149,7 @@ def setup_training(args: argparse.Namespace) -> Dict[str, Any]:
         "config": config,
         "interceptor_obs_space": policy_setup["interceptor_obs_space"],
         "target_obs_space": policy_setup["target_obs_space"],
-        "results_dir": os.path.join(local_dir, experiment_name),
+        "results_dir": results_dir,
     }
 
 def launch_training(training_ctx: Dict[str, Any]) -> Dict[str, Any]:
@@ -176,6 +181,8 @@ def launch_training(training_ctx: Dict[str, Any]) -> Dict[str, Any]:
             training_ctx["last_checkpoint_path"] = last_checkpoint.path
         elif last_checkpoint is not None:
             training_ctx["last_checkpoint_path"] = str(last_checkpoint)
+        if "last_checkpoint_path" in training_ctx:
+            save_run_parameters(training_ctx["spec"], training_ctx["last_checkpoint_path"])
 
     return training_ctx
 
