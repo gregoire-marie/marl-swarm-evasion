@@ -50,6 +50,7 @@ class SatelliteAgent:
 
         self.orbit_state = OrbitState(self.initial_elements, epoch)
         self.used_delta_v = 0.0 * u.m / u.s
+        self.last_action_delta_v = 0.0 * u.m / u.s
 
     def apply_action(self, dv_vector: np.ndarray, time: Time, maneuver_frame: str = "ECI"):
         """
@@ -77,6 +78,8 @@ class SatelliteAgent:
         self.orbit_state.apply_delta_v(dv, time, maneuver_frame=maneuver_frame)
         # Accumulate used Δv as a Quantity[m/s] to preserve unit consistency.
         self.used_delta_v += delta_v_norm(dv)
+        # Save the Δv used during the last action
+        self.last_action_delta_v = delta_v_norm(dv)
 
     def propagate_to(self, time: Time):
         """
@@ -194,6 +197,15 @@ class SatelliteAgent:
             Quantity: Total delta-v (m/s).
         """
         return self.used_delta_v
+
+    def get_last_action_delta_v(self) -> u.Quantity:
+        """
+        Returns the last delta-v applied by the agent.
+
+        Returns:
+            Quantity: Total delta-v (m/s).
+        """
+        return self.last_action_delta_v
 
     def summary(self):
         """

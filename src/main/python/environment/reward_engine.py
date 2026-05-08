@@ -247,14 +247,14 @@ def compute_rewards(
 
     # === Fuel usage penalty (all agents) ===
     for agent_id, agent in agent_states.items():
-        dv_used = agent.get_used_delta_v().to_value(u.m / u.s)
+        last_action_dv = agent.get_last_action_delta_v().to_value(u.m / u.s)
         remaining_dv = agent.get_remaining_delta_v().to_value(u.m / u.s)
 
         if remaining_dv < DEFAULT_OBJECTIVES["minimal_delta_v_mps"]:
             flags["no_fuel"] = True
             rewards[agent_id] += DEFAULT_REWARD_WEIGHTS["no_fuel_penalty"]
 
-        rewards[agent_id] += fuel_penalty_fn(dv_used)
+        rewards[agent_id] += fuel_penalty_fn(last_action_dv)
 
     # === Reentry termination criterium (all agents) ===
     for agent_id, agent in agent_states.items():
